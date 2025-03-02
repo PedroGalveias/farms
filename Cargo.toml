@@ -1,8 +1,17 @@
 [package]
 name = "farms"
 version = "0.1.0"
+authors = ["Pedro Galveias <pedro.r.galveias@pm.me>"]
 edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "farms"
 
 [dependencies]
 actix-web = "4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = "0.12.12"
