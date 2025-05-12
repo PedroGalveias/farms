@@ -5,11 +5,8 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn health_check() {
-    // No .await, no expect
+    // Arrange
     let app = spawn_app().await;
-
-    // We need to bring in `reqwest`
-    // to perform HTTP requests against our application
     let client = reqwest::Client::new();
 
     // Act
@@ -40,9 +37,7 @@ async fn spawn_app() -> TestApp {
     let mut configuration = get_configuration().expect("Failed to read configuration.");
     configuration.database.database_name = Uuid::new_v4().to_string();
 
-    let connection_pool = PgPool::connect(&configuration.database.connection_string())
-        .await
-        .expect("Failed to connect to Postgres.");
+    let connection_pool = configure_database(&configuration.database).await;
 
     let server = farms::run(listener, connection_pool.clone()).expect("Failed to bind address.");
 
