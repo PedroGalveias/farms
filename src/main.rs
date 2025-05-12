@@ -2,7 +2,7 @@
 use env_logger::Env;
 use farms::configuration::get_configuration;
 use farms::startup::run;
-use sqlx::{Connection, PgPool};
+use sqlx::PgPool;
 use std::net::TcpListener;
 
 #[tokio::main]

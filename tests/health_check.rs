@@ -90,7 +90,6 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
     let mut connection = PgConnection::connect(&connection_string)
         .await
         .expect("Failed to connect to Postgres.");
-    let client = reqwest::Client::new();
 
     // Act
     let body = r#"{"name":"Farmy","address":"Bahnhofstrasse, 5401 Baden","canton":"Aargau","coordinates":"F8G5+J3,","categories":"Organic,Fruit,Vegetables"}"#;
