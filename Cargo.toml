@@ -19,6 +19,7 @@ serde = { version = "1.0", features = ["derive"] }
 config = "0.15"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+env_logger = "0.11"
 
 [dependencies.sqlx]
 version = "0.8"
