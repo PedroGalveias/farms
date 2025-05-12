@@ -1,27 +1,24 @@
 name: Rust
 
-on: [push, pull_request]
+on: [ push, pull_request ]
 
 env:
   CARGO_TERM_COLOR: always
+  APP_USER: app
+  APP_USER_PWD: secret
+  APP_DB_NAME: newsletter
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: 123123
+  POSTGRES_DB: postgres
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Run tests
-        run: cargo test
-
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
       - name: Enforce formatting
@@ -30,24 +27,79 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: true
     steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
       - name: Linting
         run: cargo clippy -- -D warnings
 
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin
-      options: --security-opt seccomp=unconfined
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 123123
+          POSTGRES_DB: newsletter
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Generate code coverage
+        uses: actions/checkout@v4
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: llvm-tools
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Install sqlx-cli
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: sqlx-cli
+          version: '0.8.3'
+          features: 'rustls,postgres'
+          args: --no-default-features
+      - name: Create coverage dir
+        run: mkdir ./coverage
+      - name: Create app user in Postgres
         run: |
-          cargo tarpaulin --verbose --workspace
+          sudo apt-get install postgresql-client
+
+          # Create the application user
+          CREATE_QUERY="CREATE USER ${APP_USER} WITH PASSWORD '${APP_USER_PWD}';"
+          PGPASSWORD="${{ env.POSTGRES_PASSWORD }}" psql -U "${{ env.POSTGRES_USER }}" -h "localhost" -c "${CREATE_QUERY}"
+
+          # Grant create db privileges to the app user
+          GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
+          PGPASSWORD="${{ env.POSTGRES_PASSWORD }}" psql -U "${{ env.POSTGRES_USER }}" -h "localhost" -c "${GRANT_QUERY}"
+      - name: Migrate database
+        run: SKIP_DOCKER=true ./scripts/init_db.sh
+      - name: Run tests with code coverage
+        run: cargo llvm-cov --all-features --workspace --cobertura --output-path ./coverage/cobertura.xml
+      - name: Generate HTML code coverage report
+        run: cargo llvm-cov report --html --output-dir coverage
+      - name: Code Coverage Summary Report
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coverage/*cobertura.xml
+          badge: true
+          format: markdown
+      - name: Check that queries are fresh
+        run: cargo sqlx prepare --workspace --all --check -- --all-targets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "Coverage report"
+          path: coverage/
