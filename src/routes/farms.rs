@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use chrono::Utc;
 use sqlx::types::Uuid;
 use sqlx::PgPool;
 
@@ -19,7 +20,7 @@ pub async fn create(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpR
         form.canton,
         form.coordinates,
         form.categories,
-        Utc::now()
+        Utc::now(),
     )   // We use `get_ref` to get an immutable reference to the `PgConnection`
         // wrapped by `web::Data`.
         .execute(pool.get_ref())
