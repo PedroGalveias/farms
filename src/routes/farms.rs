@@ -13,6 +13,7 @@ pub struct FormData {
 }
 
 pub async fn create(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
+    log::info!("Saving new farm details in the database");
     match sqlx::query!(r"INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
         Uuid::new_v4(),
         form.name,
@@ -25,9 +26,12 @@ pub async fn create(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpR
         // wrapped by `web::Data`.
         .execute(pool.get_ref())
         .await {
-        Ok(_) => HttpResponse::Ok().finish(),
+        Ok(_) => {
+            log::info!("New farm details have been saved");
+            HttpResponse::Ok().finish()
+        },
         Err(e) => {
-            println!("Failed to execute query: {}", e);
+            log::error!("Failed to execute query: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
