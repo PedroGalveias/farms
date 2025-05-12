@@ -13,7 +13,7 @@ pub struct FormData {
 }
 
 pub async fn create(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
-    let request_id = uuid::Uuid::new_v4();
+    let request_id = Uuid::new_v4();
     tracing::info!(
         "request_id {} - Adding '{}' '{}' '{}' '{}' '{}' as a new farm.",
         request_id,
