@@ -1,4 +1,3 @@
-use farms::configuration;
 use farms::configuration::{get_configuration, DatabaseSettings};
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::TcpListener;
@@ -7,7 +6,7 @@ use uuid::Uuid;
 #[tokio::test]
 async fn health_check() {
     // No .await, no expect
-    let address = spawn_app();
+    let app = spawn_app().await;
 
     // We need to bring in `reqwest`
     // to perform HTTP requests against our application
@@ -15,7 +14,7 @@ async fn health_check() {
 
     // Act
     let response = client
-        .get(&format!("{}/health_check", &address))
+        .get(&format!("{}/health_check", &app.address))
         .send()
         .await
         .expect("Failed to execute request.");
