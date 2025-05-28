@@ -5,12 +5,11 @@ use farms::startup::run;
 use farms::telemetry::{get_subscriber, init_subscriber};
 use secrecy::ExposeSecret;
 use sqlx::PgPool;
-use std::io::stdout;
 use std::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    let subscriber = get_subscriber("farms".into(), "info".into(), stdout());
+    let subscriber = get_subscriber("farms".into(), "info".into(), std::io::stdout);
     init_subscriber(subscriber);
 
     let configuration = get_configuration().expect("Failed to read configuration.");

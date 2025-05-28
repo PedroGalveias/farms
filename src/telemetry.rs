@@ -19,7 +19,7 @@ pub fn get_subscriber<Sink>(
     name: String,
     env_filter: String,
     sink: Sink,
-) -> impl Subscriber + Send + Sync
+) -> impl Subscriber + Sync + Send
 where
     // This "weird" syntax is a higher-ranked trait bound (HRTB)
     // It basically means that Sink implements the `MakeWriter`
