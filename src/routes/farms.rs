@@ -41,14 +41,13 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Err
                 form.coordinates,
                 form.categories,
                 Utc::now(),
-                Option::<DateTime<Utc>>::None,
-
+                Option::<DateTime<Utc>>::None
             )
-                .execute(pool)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to execute query: {:?}", e);
-                    e
-                })?;
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to execute query: {:?}", e);
+            e
+        })?;
     Ok(())
 }
