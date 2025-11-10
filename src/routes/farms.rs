@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sqlx::types::Uuid;
 use sqlx::PgPool;
 
@@ -12,8 +12,9 @@ pub struct FormData {
     categories: String,
 }
 
+#[allow(clippy::async_yields_async)]
 #[tracing::instrument(
-    name = "Creating a new farm",
+    name = "Adding a new farm",
     skip(form, pool),
     fields(
         create_name = %form.name,
@@ -30,10 +31,9 @@ pub async fn create(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpR
     }
 }
 
+#[tracing::instrument(name = "Saving new farm details in the database", skip(form, pool))]
 pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Error> {
-    match pool.acquire().await {
-        Ok(_) => {
-            sqlx::query!(r#"INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
+    sqlx::query!(r#" INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
                 Uuid::new_v4(),
                 form.name,
                 form.address,
@@ -41,6 +41,8 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Err
                 form.coordinates,
                 form.categories,
                 Utc::now(),
+                Option::<DateTime<Utc>>::None,
+
             )
                 .execute(pool)
                 .await
@@ -48,11 +50,5 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Err
                     tracing::error!("Failed to execute query: {:?}", e);
                     e
                 })?;
-            Ok(())
-        }
-        Err(e) => {
-            tracing::error!("Failed to acquire database connection: {:?}", e);
-            Err(e)
-        }
-    }
+    Ok(())
 }

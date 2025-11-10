@@ -1,4 +1,5 @@
 use farms::configuration::{get_configuration, DatabaseSettings};
+use farms::startup::run;
 use farms::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
 use secrecy::ExposeSecret;
@@ -44,7 +45,7 @@ async fn spawn_app() -> TestApp {
 
     let connection_pool = configure_database(&configuration.database).await;
 
-    let server = farms::run(listener, connection_pool.clone()).expect("Failed to bind address.");
+    let server = run(listener, connection_pool.clone()).expect("Failed to bind address");
 
     // Launch the server as a background task
     // tokio::spawn returns a handle to the spawned future,
@@ -89,7 +90,7 @@ async fn health_check() {
 
     // Act
     let response = client
-        .get(&format!("{}/health_check", &app.address))
+        .get(&format!("http://{}/health_check", &app.address))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -105,16 +106,11 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
     let app = spawn_app().await;
     let client = reqwest::Client::new();
 
-    let configuration = get_configuration().expect("Failed to read configuration.");
-    let connection_string = configuration.database.connection_string();
-    let mut connection = PgConnection::connect(&connection_string.expose_secret())
-        .await
-        .expect("Failed to connect to Postgres.");
-
     // Act
-    let body = r#"{"name":"Farmy","address":"Bahnhofstrasse, 5401 Baden","canton":"Aargau","coordinates":"F8G5+J3,","categories":"Organic,Fruit,Vegetables"}"#;
+    let body = "name=Farmy&address=Bahnhofstrasse%2C%205401%20Baden&canton=Aargau&coordinates=F8G5%2BJ3&categories=Organic%2CFruit%2CVegetables";
+
     let response = client
-        .post(&format!("{}/farms", &app.address))
+        .post(&format!("http://{}/farms", &app.address))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .send()
@@ -124,8 +120,8 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
     // Assert
     assert_eq!(200, response.status().as_u16());
 
-    let saved = sqlx::query!("SELECT name, address, canton, coordinates, categories FROM farms",)
-        .fetch_one(&mut connection)
+    let saved = sqlx::query!("SELECT * FROM farms",)
+        .fetch_one(&app.db_pool)
         .await
         .expect("Failed to fetch saved subscription.");
 
