@@ -9,25 +9,73 @@ pub struct FormData {
     address: String,
     canton: String,
     coordinates: String,
-    categories: String,
+    #[serde(default)]
+    categories: Vec<String>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, sqlx::FromRow)]
+pub struct Farm {
+    pub id: Uuid,
+    pub name: String,
+    pub address: String,
+    pub canton: String,
+    pub coordinates: String,
+    pub categories: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[allow(clippy::async_yields_async)]
-#[tracing::instrument(
-    name = "Adding a new farm",
-    skip(form, pool),
-    fields(
-        create_name = %form.name,
-        create_address = %form.address,
-        create_canton = %form.canton,
-        create_coordinates = %form.coordinates,
-        create_categories = %form.categories
-    )
-)]
-pub async fn create(form: web::Form<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
+#[tracing::instrument(name = "Adding a new farm", skip(body, pool))]
+pub async fn create(body: web::Bytes, pool: web::Data<PgPool>) -> HttpResponse {
+    // Parse form data with serde_qs to support repeated parameters
+    let form: FormData = match serde_qs::from_bytes(&body) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::error!("Failed to parse form: {:?}", e);
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": format!("Parse error: {}", e)
+            }));
+        }
+    };
+
+    // Record form fields in the tracing span
+    let span = tracing::Span::current();
+    span.record("create_name", &form.name.as_str());
+    span.record("create_address", &form.address.as_str());
+    span.record("create_canton", &form.canton.as_str());
+    span.record("create_coordinates", &form.coordinates.as_str());
+    span.record(
+        "create_categories",
+        &tracing::field::debug(&form.categories),
+    );
+
     match insert_farm(&pool, &form).await {
         Ok(_) => HttpResponse::Ok().finish(),
-        Err(_) => HttpResponse::InternalServerError().finish(),
+        Err(e) => {
+            tracing::error!("Failed to insert farm: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
+    }
+}
+
+pub async fn farms(pool: web::Data<PgPool>) -> HttpResponse {
+    match get_farms(&pool).await {
+        Ok(farms) => HttpResponse::Ok().json(farms),
+        Err(e) => {
+            tracing::error!("Failed to fetch farms: {:?}", e);
+
+            #[cfg(debug_assertions)]
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to fetch farms",
+                "details": e.to_string() // Only in debug builds
+            }));
+
+            #[cfg(not(debug_assertions))]
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to fetch farms"
+            }))
+        }
     }
 }
 
@@ -39,7 +87,7 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Err
                 form.address,
                 form.canton,
                 form.coordinates,
-                form.categories,
+                &form.categories,
                 Utc::now(),
                 Option::<DateTime<Utc>>::None
             )
@@ -50,4 +98,28 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Err
             e
         })?;
     Ok(())
+}
+
+#[tracing::instrument(name = "Get all farms", skip(pool))]
+pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, sqlx::Error> {
+    let farms = sqlx::query_as!(
+        Farm,
+        r#"
+        SELECT
+            id,
+            name,
+            address,
+            canton,
+            coordinates,
+            categories as "categories: Vec<String>",
+            created_at,
+            updated_at
+        FROM farms
+        ORDER BY created_at DESC
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(farms)
 }

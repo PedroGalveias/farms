@@ -1,11 +1,14 @@
+use chrono::{DateTime, Utc};
 use farms::configuration::{get_configuration, DatabaseSettings};
+use farms::routes::Farm;
 use farms::startup::run;
 use farms::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
 use secrecy::ExposeSecret;
+use sqlx::types::Uuid;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
+use std::collections::HashSet;
 use std::net::TcpListener;
-use uuid::Uuid;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -107,7 +110,7 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
     let client = reqwest::Client::new();
 
     // Act
-    let body = "name=Farmy&address=Bahnhofstrasse%2C%205401%20Baden&canton=Aargau&coordinates=F8G5%2BJ3&categories=Organic%2CFruit%2CVegetables";
+    let body = "name=Farmy&address=Bahnhofstrasse%2C%205401%20Baden&canton=Aargau&coordinates=F8G5%2BJ3&categories[]=Organic&categories[]=Fruit&categories[]=Vegetables";
 
     let response = client
         .post(&format!("http://{}/farms", &app.address))
@@ -129,5 +132,84 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
     assert_eq!(saved.address, "Bahnhofstrasse, 5401 Baden");
     assert_eq!(saved.canton, "Aargau");
     assert_eq!(saved.coordinates, "F8G5+J3");
-    assert_eq!(saved.categories, "Organic,Fruit,Vegetables");
+    assert_eq!(
+        saved.categories.into_iter().collect::<HashSet<_>>(),
+        ["Organic", "Fruit", "Vegetables"]
+            .into_iter()
+            .map(String::from)
+            .collect::<HashSet<_>>()
+    );
+}
+
+// TODO: Insert multiple farms and test. But first, have the test running with a single farm.
+#[tokio::test]
+async fn get_farms_returns_200_and_list_of_farms() {
+    // Arrange
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+
+    // Insert test data
+    sqlx::query!(r#" INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
+                Uuid::new_v4(),
+                "Test Farm 1",
+                "Address 1, 5401 Baden",
+                "Aargau",
+                "F8G5+J3",
+                &vec!["Organic".to_string(), "Fruit".to_string()] as &Vec<String>,
+                Utc::now(),
+                Option::<DateTime<Utc>>::None
+            )
+        .execute(&app.db_pool)
+        .await
+        .expect("Failed to execute query");
+
+    // Act
+    let response = client
+        .get(&format!("http://{}/farms", &app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    println!("Response status: {}", &response.status());
+
+    // let response_text = response.text().await.expect("Failed to get response body");
+    //  println!("Response body: {}", &response_text);
+
+    // Assert
+    assert_eq!(200, response.status().as_u16());
+
+    let farms: Vec<Farm> = response
+        .json()
+        .await
+        .expect("Failed to parse response as JSON.");
+
+    assert_eq!(farms.len(), 1);
+    // assert_eq!(farms[0].name, "Test Farm 2"); // Most recent first
+    // assert_eq!(farms[0].canton, "Zurich");
+    assert_eq!(farms[0].name, "Test Farm 1");
+    assert_eq!(farms[0].canton, "Aargau");
+}
+
+#[tokio::test]
+async fn get_farms_returns_empty_list_when_no_farms_exist() {
+    // Arrange
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+
+    // Act
+    let response = client
+        .get(&format!("http://{}/farms", &app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    // Assert
+    assert_eq!(200, response.status().as_u16());
+
+    let farms: Vec<Farm> = response
+        .json()
+        .await
+        .expect("Failed to parse response as JSON.");
+
+    assert_eq!(farms.len(), 0);
 }

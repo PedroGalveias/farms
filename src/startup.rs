@@ -1,4 +1,4 @@
-use crate::routes::{create, health_check};
+use crate::routes::{create, farms, health_check};
 use actix_web::dev::Server;
 use actix_web::web::Data;
 use actix_web::{web, App, HttpServer};
@@ -16,6 +16,7 @@ pub fn run(listener: TcpListener, db_pool: PgPool) -> Result<Server, std::io::Er
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
             .route("/farms", web::post().to(create))
+            .route("/farms", web::get().to(farms))
             // Get pointer copy and attach it to the application state
             .app_data(db_pool.clone())
     })

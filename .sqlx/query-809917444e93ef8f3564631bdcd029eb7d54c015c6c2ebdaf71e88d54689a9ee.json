@@ -10,7 +10,7 @@
         "Text",
         "Text",
         "Text",
-        "Text",
+        "TextArray",
         "Timestamptz",
         "Timestamptz"
       ]
