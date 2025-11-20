@@ -41,14 +41,11 @@ pub async fn create(body: web::Bytes, pool: web::Data<PgPool>) -> HttpResponse {
 
     // Record form fields in the tracing span
     let span = tracing::Span::current();
-    span.record("create_name", &form.name.as_str());
-    span.record("create_address", &form.address.as_str());
-    span.record("create_canton", &form.canton.as_str());
-    span.record("create_coordinates", &form.coordinates.as_str());
-    span.record(
-        "create_categories",
-        &tracing::field::debug(&form.categories),
-    );
+    span.record("create_name", form.name.as_str());
+    span.record("create_address", form.address.as_str());
+    span.record("create_canton", form.canton.as_str());
+    span.record("create_coordinates", form.coordinates.as_str());
+    span.record("create_categories", tracing::field::debug(&form.categories));
 
     match insert_farm(&pool, &form).await {
         Ok(_) => HttpResponse::Ok().finish(),
