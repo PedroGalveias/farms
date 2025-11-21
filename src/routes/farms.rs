@@ -28,7 +28,6 @@ pub struct Farm {
 #[allow(clippy::async_yields_async)]
 #[tracing::instrument(name = "Adding a new farm", skip(body, pool))]
 pub async fn create(body: web::Json<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
-
     // Record form fields in the tracing span
     let span = tracing::Span::current();
     span.record("create_name", body.name.as_str());
