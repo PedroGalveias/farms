@@ -1,0 +1,16 @@
+meta {
+  name: Health Check
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{URL}}/health_check
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "name": "api_docs",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "size": 0.0006999969482421875,
+  "filesCount": 3,
+  "presets": {
+    "requestType": "http",
+    "requestUrl": "{{URL}}/"
+  }
+}
