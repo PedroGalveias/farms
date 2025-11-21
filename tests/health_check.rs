@@ -104,18 +104,28 @@ async fn health_check() {
 }
 
 #[tokio::test]
-async fn create_farm_returns_a_200_for_valid_form_data() {
+async fn create_farm_returns_a_200_for_valid_body_data() {
     // Arrange
     let app = spawn_app().await;
     let client = reqwest::Client::new();
 
     // Act
-    let body = "name=Farmy&address=Bahnhofstrasse%2C%205401%20Baden&canton=Aargau&coordinates=F8G5%2BJ3&categories[]=Organic&categories[]=Fruit&categories[]=Vegetables";
+    let body = serde_json::json!({
+        "name": "Farmy",
+        "address": "Bahnhofstrasse, 5401 Baden",
+        "canton": "Aargau",
+        "coordinates": "F8G5+J3",
+        "categories": [
+            "Organic",
+            "Fruit",
+            "Vegetables"
+        ]
+    });
 
     let response = client
         .post(&format!("http://{}/farms", &app.address))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
+        .header("Content-Type", "application/json")
+        .json(&body)
         .send()
         .await
         .expect("Failed to execute request.");
@@ -139,6 +149,95 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
             .map(String::from)
             .collect::<HashSet<_>>()
     );
+}
+
+#[tokio::test]
+async fn create_farm_returns_a_400_for_invalid_body_data() {
+    // Arrange
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    let test_cases = vec![
+        (
+            serde_json::json!({
+                "address": "Bahnhofstrasse, 5401 Baden",
+                "canton": "Aargau",
+                "coordinates": "F8G5+J3",
+                "categories": [
+                    "Organic",
+                    "Fruit",
+                    "Vegetables"
+                ]
+            }),
+            "missing field 'name'",
+        ),
+        (
+            serde_json::json!({
+                "name": "Farmy",
+                "canton": "Aargau",
+                "coordinates": "F8G5+J3",
+                "categories": [
+                    "Organic",
+                    "Fruit",
+                    "Vegetables"
+                ]
+            }),
+            "missing field 'address'",
+        ),
+        (
+            serde_json::json!({
+                "name": "Farmy",
+                "address": "Bahnhofstrasse, 5401 Baden",
+                "coordinates": "F8G5+J3",
+                "categories": [
+                    "Organic",
+                    "Fruit",
+                    "Vegetables"
+                ]
+            }),
+            "missing field 'canton'",
+        ),
+        (
+            serde_json::json!({
+                "name": "Farmy",
+                "address": "Bahnhofstrasse, 5401 Baden",
+                "canton": "Aargau",
+                "categories": [
+                    "Organic",
+                    "Fruit",
+                    "Vegetables"
+                ]
+            }),
+            "missing field 'coordinates'",
+        ),
+        (
+            serde_json::json!({
+                "name": "Farmy",
+                "address": "Bahnhofstrasse, 5401 Baden",
+                "canton": "Aargau",
+                "coordinates": "F8G5+J3",
+            }),
+            "missing field 'categories'",
+        ),
+    ];
+
+    for (invalid_body, error_message) in test_cases {
+        // Act
+        let response = client
+            .post(&format!("http://{}/farms", &app.address))
+            .header("Content-Type", "application/json")
+            .json(&invalid_body)
+            .send()
+            .await
+            .expect("Failed to execute request.");
+
+        // Assert
+        assert_eq!(
+            400,
+            response.status().as_u16(),
+            "The API did not fail with 400 Bad Request when the payload was {}.",
+            error_message
+        );
+    }
 }
 
 // TODO: Insert multiple farms and test. But first, have the test running with a single farm.
