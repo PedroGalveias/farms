@@ -110,12 +110,22 @@ async fn create_farm_returns_a_200_for_valid_form_data() {
     let client = reqwest::Client::new();
 
     // Act
-    let body = "name=Farmy&address=Bahnhofstrasse%2C%205401%20Baden&canton=Aargau&coordinates=F8G5%2BJ3&categories[]=Organic&categories[]=Fruit&categories[]=Vegetables";
+    let body = serde_json::json!({
+        "name": "Farmy",
+        "address": "Bahnhofstrasse, 5401 Baden",
+        "canton": "Aargau",
+        "coordinates": "F8G5+J3",
+        "categories": [
+            "Organic",
+            "Fruit",
+            "Vegetables"
+        ]
+    });
 
     let response = client
         .post(&format!("http://{}/farms", &app.address))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
+        .header("Content-Type", "application/json")
+        .json(&body)
         .send()
         .await
         .expect("Failed to execute request.");
