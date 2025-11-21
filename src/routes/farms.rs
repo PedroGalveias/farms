@@ -9,7 +9,7 @@ pub struct FormData {
     address: String,
     canton: String,
     coordinates: String,
-    #[serde(default)]
+    //#[serde(default)]
     categories: Vec<String>,
 }
 
@@ -27,27 +27,17 @@ pub struct Farm {
 
 #[allow(clippy::async_yields_async)]
 #[tracing::instrument(name = "Adding a new farm", skip(body, pool))]
-pub async fn create(body: web::Bytes, pool: web::Data<PgPool>) -> HttpResponse {
-    // Parse form data with serde_qs to support repeated parameters
-    let form: FormData = match serde_qs::from_bytes(&body) {
-        Ok(f) => f,
-        Err(e) => {
-            tracing::error!("Failed to parse form: {:?}", e);
-            return HttpResponse::BadRequest().json(serde_json::json!({
-                "error": format!("Parse error: {}", e)
-            }));
-        }
-    };
+pub async fn create(body: web::Json<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
 
     // Record form fields in the tracing span
     let span = tracing::Span::current();
-    span.record("create_name", form.name.as_str());
-    span.record("create_address", form.address.as_str());
-    span.record("create_canton", form.canton.as_str());
-    span.record("create_coordinates", form.coordinates.as_str());
-    span.record("create_categories", tracing::field::debug(&form.categories));
+    span.record("create_name", body.name.as_str());
+    span.record("create_address", body.address.as_str());
+    span.record("create_canton", body.canton.as_str());
+    span.record("create_coordinates", body.coordinates.as_str());
+    span.record("create_categories", tracing::field::debug(&body.categories));
 
-    match insert_farm(&pool, &form).await {
+    match insert_farm(&pool, &body).await {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(e) => {
             tracing::error!("Failed to insert farm: {:?}", e);
