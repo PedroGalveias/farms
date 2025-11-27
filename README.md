@@ -162,4 +162,4 @@ into Bruno to explore and test the API endpoints.
 
 ## License
 
-
+This project is licensed under the GPL-2.0 License. See the LICENSE file for details.
