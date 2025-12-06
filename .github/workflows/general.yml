@@ -2,6 +2,7 @@ name: Rust
 
 permissions:
   contents: read
+  pull-requests: write
 
 on:
   push:
@@ -73,9 +74,11 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: sqlx-cli
-          version: '0.8.6'
-          features: 'rustls,postgres'
+          version: "0.8.6"
+          features: "rustls,postgres"
           args: --no-default-features
+      - name: Check that queries are fresh
+        run: cargo sqlx prepare --workspace --all --check -- --all-targets
       - name: Create coverage dir
         run: mkdir ./coverage
       - name: Create app user in Postgres
@@ -101,8 +104,15 @@ jobs:
           filename: coverage/*cobertura.xml
           badge: true
           format: markdown
-      - name: Check that queries are fresh
-        run: cargo sqlx prepare --workspace --all --check -- --all-targets
+          indicators: true
+          output: both
+          hide_complexity: true
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          recreate: true
+          path: code-coverage-results.md
       - uses: actions/upload-artifact@v4
         with:
           name: "Coverage report"
