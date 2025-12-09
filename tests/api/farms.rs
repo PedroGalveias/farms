@@ -49,10 +49,7 @@ fn farm_to_json(farm: &Farm) -> serde_json::Value {
     })
 }
 
-async fn create_single_farm(app: &TestApp) -> Farm {
-    let farm = generate_farm();
-
-    // Insert test data
+async fn insert_farm_in_db(app: &TestApp, farm: &Farm) {
     sqlx::query!(r#" INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
                 farm.id,
                 farm.name,
@@ -65,6 +62,20 @@ async fn create_single_farm(app: &TestApp) -> Farm {
         .execute(&app.db_pool)
         .await
         .expect("Failed to execute query");
+}
+
+async fn break_farms_table(app: &TestApp) {
+    sqlx::query!("ALTER TABLE farms DROP COLUMN name;",)
+        .execute(&app.db_pool)
+        .await
+        .expect("Failed to execute query");
+}
+
+async fn create_single_farm(app: &TestApp) -> Farm {
+    let farm = generate_farm();
+
+    // Insert test data
+    insert_farm_in_db(app, &farm).await;
 
     farm
 }
@@ -117,6 +128,21 @@ async fn get_farms_returns_200_and_list_of_farms() {
 }
 
 #[tokio::test]
+async fn get_farms_returns_500_when_unexpected_error_occurs() {
+    // Arrange
+    let app = spawn_app().await;
+    // Break the DB
+    break_farms_table(&app).await;
+
+    // Act
+    let response = app.get_farms().await;
+
+    println!("Response status: {}", &response.status());
+    // Assert
+    assert_eq!(500, response.status().as_u16());
+}
+
+#[tokio::test]
 async fn create_farm_returns_a_200_for_valid_body_data() {
     // Arrange
     let app = spawn_app().await;
@@ -146,6 +172,22 @@ async fn create_farm_returns_a_200_for_valid_body_data() {
             .map(String::from)
             .collect::<HashSet<_>>()
     );
+}
+
+#[tokio::test]
+async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
+    // Arrange
+    let app = spawn_app().await;
+    let farm = generate_farm();
+    // Break the DB
+    break_farms_table(&app).await;
+
+    // Act
+    let body = farm_to_json(&farm);
+    let response = app.post_farm(body).await;
+
+    // Assert
+    assert_eq!(500, response.status().as_u16());
 }
 
 #[tokio::test]

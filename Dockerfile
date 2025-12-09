@@ -1,7 +1,7 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1-alpine3.22 AS chef
 WORKDIR /app
+RUN apk add --no-cache lld clang openssl-dev
 
-RUN apt update && apt install lld clang -y
 FROM chef AS planner
 COPY . .
 # Compute a lock-like file for our project
@@ -18,16 +18,13 @@ ENV SQLX_OFFLINE=true
 # Build our project
 RUN cargo build --release --bin farms
 
-FROM debian:bookworm-slim AS runtime
+FROM alpine:3.22 AS runtime
 WORKDIR /app
-
-RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
-  # Clean up \
-  && apt-get autoremove -y \
-  && apt-get clean -y \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl ca-certificates
 COPY --from=builder /app/target/release/farms farms
 COPY configuration configuration
+
 ENV APP_ENVIRONMENT=production
+EXPOSE 8000
+
 ENTRYPOINT ["./farms"]

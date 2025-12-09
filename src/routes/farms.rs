@@ -1,6 +1,9 @@
-use actix_web::{web, HttpResponse};
+use crate::errors::error_chain_fmt;
+use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
+use anyhow::Context;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use std::fmt::Formatter;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -9,7 +12,6 @@ pub struct FormData {
     address: String,
     canton: String,
     coordinates: String,
-    //#[serde(default)]
     categories: Vec<String>,
 }
 
@@ -27,7 +29,10 @@ pub struct Farm {
 
 #[allow(clippy::async_yields_async)]
 #[tracing::instrument(name = "Adding a new farm", skip(body, pool))]
-pub async fn create(body: web::Json<FormData>, pool: web::Data<PgPool>) -> HttpResponse {
+pub async fn create(
+    body: web::Json<FormData>,
+    pool: web::Data<PgPool>,
+) -> Result<HttpResponse, FarmError> {
     // Record form fields in the tracing span
     let span = tracing::Span::current();
     span.record("create_name", body.name.as_str());
@@ -36,58 +41,67 @@ pub async fn create(body: web::Json<FormData>, pool: web::Data<PgPool>) -> HttpR
     span.record("create_coordinates", body.coordinates.as_str());
     span.record("create_categories", tracing::field::debug(&body.categories));
 
-    match insert_farm(&pool, &body).await {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(e) => {
-            tracing::error!("Failed to insert farm: {:?}", e);
-            HttpResponse::InternalServerError().finish()
+    insert_farm(&pool, &body).await?;
+
+    Ok(HttpResponse::Ok().finish())
+}
+
+pub async fn farms(pool: web::Data<PgPool>) -> Result<HttpResponse, FarmError> {
+    let farms = get_farms(&pool).await?;
+
+    Ok(HttpResponse::Ok().json(farms))
+}
+
+#[derive(thiserror::Error)]
+pub enum FarmError {
+    // `error` Implements the Display for this enum variant
+    #[error("{0}")]
+    ValidationError(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+    // `from` derives an implementation of From for the type
+    // this field is also used as error `source`. this denotes what should be returned as root cause
+}
+impl ResponseError for FarmError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            Self::ValidationError(_) => StatusCode::BAD_REQUEST,
+            Self::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
-
-pub async fn farms(pool: web::Data<PgPool>) -> HttpResponse {
-    match get_farms(&pool).await {
-        Ok(farms) => HttpResponse::Ok().json(farms),
-        Err(e) => {
-            tracing::error!("Failed to fetch farms: {:?}", e);
-
-            #[cfg(debug_assertions)]
-            return HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to fetch farms",
-                "details": e.to_string() // Only in debug builds
-            }));
-
-            #[cfg(not(debug_assertions))]
-            HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "Failed to fetch farms"
-            }))
-        }
+impl std::fmt::Debug for FarmError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
     }
 }
 
 #[tracing::instrument(name = "Saving new farm details in the database", skip(form, pool))]
-pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Error> {
-    sqlx::query!(r#" INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
-                Uuid::new_v4(),
-                form.name,
-                form.address,
-                form.canton,
-                form.coordinates,
-                &form.categories,
-                Utc::now(),
-                Option::<DateTime<Utc>>::None
-            )
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to execute query: {:?}", e);
-            e
-        })?;
+pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), FarmError> {
+    sqlx::query!(
+        r#"
+            INSERT INTO farms (
+                 id, name, address, canton, coordinates, categories, created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        Uuid::new_v4(),
+        form.name,
+        form.address,
+        form.canton,
+        form.coordinates,
+        &form.categories,
+        Utc::now(),
+        Option::<DateTime<Utc>>::None
+    )
+    .execute(pool)
+    .await
+    .context("Failed to insert new farm in the database.")?;
+
     Ok(())
 }
 
 #[tracing::instrument(name = "Get all farms", skip(pool))]
-pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, sqlx::Error> {
+pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, FarmError> {
     let farms = sqlx::query_as!(
         Farm,
         r#"
@@ -105,7 +119,10 @@ pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, sqlx::Error> {
         "#
     )
     .fetch_all(pool)
-    .await?;
+    .await
+    .context("Failed to fetch farms from the database.")?;
+    // context method converts the error returned into anyhow::Error
+    //  and enriches it with additional context around the intentions of the caller/
 
     Ok(farms)
 }
