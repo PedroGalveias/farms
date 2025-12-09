@@ -5,11 +5,9 @@ permissions:
   deployments: write
 
 on:
-  workflow_run:
-    workflows:
-      - "CI-Build"
-    types:
-      - completed
+  push:
+    tags:
+      - v**
 
 concurrency:
   group: render
@@ -27,5 +25,5 @@ jobs:
           clear_cache: true # Optional: Clear Render's build cache
           wait_deploy: true
           github_deployment: true
-          deployment_environment: "production" # check value
+          deployment_environment: "production"
           github_token: ${{ secrets.GITHUB_TOKEN }}
