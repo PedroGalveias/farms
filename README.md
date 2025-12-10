@@ -30,7 +30,15 @@ farms/
 │   ├── startup.rs           # Server configuration and HTTP setup
 │   ├── configuration.rs     # Settings and database connection
 │   ├── telemetry.rs         # Logging configuration
+│   ├── errors.rs            # Error utilities
+│   ├── domain/              # Domain layer (business logic & validation)
+│   │   ├── mod.rs           # Domain module exports
+│   │   ├── farm_name.rs     # Validated farm name type
+│   │   ├── location.rs      # Validated coordinates type
+│   │   ├── canton.rs        # Validated Swiss canton type
+│   │   └── categories.rs    # Validated categories type
 │   └── routes/
+│       ├── mod.rs           # Routes module exports
 │       ├── health_check.rs  # Health check endpoint
 │       └── farms.rs         # Farm CRUD operations
 ├── migrations/              # Database migrations
@@ -38,6 +46,7 @@ farms/
 ├── api_docs/               # Bruno API collection
 ├── scripts/                # Database setup scripts
 └── tests/                  # Integration tests
+    └── api/                # API integration tests
 ```
 
 ## Prerequisites
