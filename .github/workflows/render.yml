@@ -31,5 +31,5 @@ jobs:
       #    clear_cache: true # Optional: Clear Render's build cache
       #    wait_deploy: true
       #    github_deployment: true
-      #    deployment_environment: "production"
+      #    deployment_environment: "render"
       #    github_token: ${{ secrets.GITHUB_TOKEN }}
