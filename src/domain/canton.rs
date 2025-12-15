@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Debug, Clone)]
 pub struct Canton(String);
 
@@ -44,37 +46,38 @@ impl AsRef<str> for Canton {
     }
 }
 
-impl std::fmt::Display for Canton {
+impl Display for Canton {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-// Canton domain tests; to be extracted to the tests module after successfully implementation
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Canton;
+    use claims::{assert_err, assert_ok};
 
     #[test]
     fn valid_canton_uppercase() {
-        assert!(Canton::parse("ZH".to_string()).is_ok());
+        let canton = "ZH";
+        assert_ok!(Canton::parse(canton.to_string()));
     }
 
     #[test]
     fn valid_canton_lowercase() {
-        let canton = Canton::parse("ag".to_string());
-        assert!(canton.is_ok());
-        assert_eq!(canton.unwrap().as_str(), "AG");
+        let canton = "ag";
+        assert_ok!(Canton::parse(canton.to_string()));
     }
 
     #[test]
     fn invalid_canton_rejected() {
-        assert!(Canton::parse("DE".to_string()).is_err());
+        let canton = "DE";
+        assert_err!(Canton::parse(canton.to_string()));
     }
 
     #[test]
     fn invalid_canton_empty_string() {
-        assert!(Canton::parse("".to_string()).is_err());
+        let canton = "";
+        assert_err!(Canton::parse(canton.to_string()));
     }
 }
