@@ -18,7 +18,25 @@ jobs:
     runs-on: ubuntu-latest
     environment: render
     steps:
-      - name: Deploy to render
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install sqlx-cli
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: sqlx-cli
+          version: "0.8.6"
+          features: "rustls,postgres"
+          args: --no-default-features
+
+      - name: Run DB migrations on DB
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          sqlx database create
+          sqlx migrate run
+
+      - name: Trigger deploy to Render
         env:
           deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
