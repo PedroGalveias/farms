@@ -34,7 +34,7 @@ farms/
 │   ├── domain/              # Domain layer (business logic & validation)
 │   │   ├── mod.rs           # Domain module exports
 │   │   ├── farm_name.rs     # Validated farm name type
-│   │   ├── location.rs      # Validated coordinates type
+│   │   ├── coordinates.rs   # Validated coordinates type
 │   │   ├── canton.rs        # Validated Swiss canton type
 │   │   └── categories.rs    # Validated categories type
 │   └── routes/
