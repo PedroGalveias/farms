@@ -6,6 +6,7 @@ use sqlx::postgres::{PgConnectOptions, PgSslMode};
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
+    pub redis_uri: SecretString,
 }
 
 #[derive(serde::Deserialize, Clone)]
