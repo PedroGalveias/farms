@@ -11,3 +11,4 @@ pub use canton::{Canton, CantonError};
 pub use categories::{Categories, CategoriesError};
 pub use coordinates::{Coordinates, CoordinatesError};
 pub use farm_name::{FarmName, FarmNameError};
+pub use point::Point;
