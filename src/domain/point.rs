@@ -2,8 +2,10 @@ use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::postgres::{PgArgumentBuffer, PgTypeInfo, PgValueRef};
 use sqlx::{Decode, Encode, Postgres, Type};
+use thiserror::Error;
 
 /// Represents a PostgreSQL POINT (longitude, latitude) datatype
+/// with validation for Switzerland boundaries
 /// PostgreSQL POINT stores coordinates as (x, y) which maps to (longitude, latitude)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
@@ -11,7 +13,28 @@ pub struct Point {
     pub latitude: f64,
 }
 
+#[derive(Debug, Error)]
+pub enum PointError {
+    #[error("Invalid coordinate format. Expected 'latitude,longitude' (e.g., '47.3769,8.5417')")]
+    InvalidFormat,
+
+    #[error("Invalid latitude: {0}. Must be between -90 and 90")]
+    InvalidLatitude(f64),
+
+    #[error("Invalid longitude: {0}. Must be between -180 and 180")]
+    InvalidLongitude(f64),
+
+    #[error("Coordinates not within Switzerland boundaries. Latitude: {lat}, Longitude: {lon}")]
+    NotInSwitzerland { lat: f64, lon: f64 },
+}
+
 impl Point {
+    // Switzerland boundaries (approximate)
+    const MIN_LATITUDE: f64 = 45.8;
+    const MAX_LATITUDE: f64 = 47.9;
+    const MIN_LONGITUDE: f64 = 5.9;
+    const MAX_LONGITUDE: f64 = 10.6;
+
     pub fn new(latitude: f64, longitude: f64) -> Self {
         Self {
             latitude,
@@ -19,23 +42,46 @@ impl Point {
         }
     }
 
-    /// Parse from "latitude,longitude" string format
-    pub fn from_string(s: &str) -> Result<Self, String> {
+    /// Check if coordinates are within Switzerland boundaries
+    fn is_within_switzerland(lat: f64, lon: f64) -> bool {
+        (Self::MIN_LATITUDE..=Self::MAX_LATITUDE).contains(&lat)
+            && (Self::MIN_LONGITUDE..=Self::MAX_LONGITUDE).contains(&lon)
+    }
+
+    /// Parse from "latitude,longitude" string format with Switzerland validation
+    ///
+    /// Expected format: "latitude,longitude" (e.g., "47.3769,8.5417")
+    /// Validates that coordinates are within Switzerland boundaries
+    pub fn parse(s: &str) -> Result<Self, PointError> {
         let parts: Vec<&str> = s.split(',').collect();
 
         if parts.len() != 2 {
-            return Err("Invalid format. Expected 'latitude,longitude'".to_string());
+            return Err(PointError::InvalidFormat);
         }
 
         let lat = parts[0]
             .trim()
             .parse::<f64>()
-            .map_err(|_| "Invalid latitude")?;
+            .map_err(|_| PointError::InvalidFormat)?;
 
         let lon = parts[1]
             .trim()
             .parse::<f64>()
-            .map_err(|_| "Invalid longitude")?;
+            .map_err(|_| PointError::InvalidFormat)?;
+
+        // Validate basic coordinate ranges
+        if !(-90.0..=90.0).contains(&lat) {
+            return Err(PointError::InvalidLatitude(lat));
+        }
+
+        if !(-180.0..=180.0).contains(&lon) {
+            return Err(PointError::InvalidLongitude(lon));
+        }
+
+        // Validate Switzerland boundaries
+        if !Self::is_within_switzerland(lat, lon) {
+            return Err(PointError::NotInSwitzerland { lat, lon });
+        }
 
         Ok(Self::new(lat, lon))
     }
@@ -43,6 +89,33 @@ impl Point {
     /// Convert to "latitude,longitude" string format (for API responses)
     pub fn to_string_format(&self) -> String {
         format!("{},{}", self.latitude, self.longitude)
+    }
+
+    /// Get latitude
+    pub fn latitude(&self) -> f64 {
+        self.latitude
+    }
+
+    /// Get longitude
+    pub fn longitude(&self) -> f64 {
+        self.longitude
+    }
+
+    /// Get both coordinates as tuple (latitude, longitude)
+    pub fn parse_components(&self) -> (f64, f64) {
+        (self.latitude, self.longitude)
+    }
+
+    /// Return as string (useful for logging/display)
+    pub fn as_str(&self) -> String {
+        self.to_string_format()
+    }
+}
+
+// Display trait for easy printing
+impl std::fmt::Display for Point {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string_format())
     }
 }
 
@@ -59,7 +132,7 @@ impl Encode<'_, Postgres> for Point {
         // PostgreSQL POINT format: (x, y) = (longitude, latitude)
         let point_str = format!("({},{})", self.longitude, self.latitude);
         buf.extend_from_slice(point_str.as_bytes());
-        Ok(IsNull::No) // Changed: Now returns Result
+        Ok(IsNull::No)
     }
 }
 
@@ -105,13 +178,14 @@ impl<'de> serde::Deserialize<'de> for Point {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Point::from_string(&s).map_err(serde::de::Error::custom)
+        Point::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Point;
+    use claims::{assert_err, assert_ok};
 
     // ========================================
     // Construction Tests
@@ -127,21 +201,20 @@ mod tests {
     #[test]
     fn point_implements_copy() {
         let point1 = Point::new(47.3769, 8.5417);
-        let point2 = point1; // Should copy, not move
+        let point2 = point1;
 
-        // Both should be usable
         assert_eq!(point1.latitude, 47.3769);
         assert_eq!(point2.latitude, 47.3769);
     }
 
     // ========================================
-    // String Parsing Tests
+    // String Parsing Tests (with validation)
     // ========================================
 
     #[test]
     fn parse_valid_coordinates_string() {
-        let result = Point::from_string("47.3769,8.5417");
-        assert!(result.is_ok());
+        let result = Point::parse("47.3769,8.5417");
+        assert_ok!(&result);
 
         let point = result.unwrap();
         assert_eq!(point.latitude, 47.3769);
@@ -150,8 +223,8 @@ mod tests {
 
     #[test]
     fn parse_coordinates_with_spaces() {
-        let result = Point::from_string("47.3769, 8.5417");
-        assert!(result.is_ok());
+        let result = Point::parse("47.3769, 8.5417");
+        assert_ok!(&result);
 
         let point = result.unwrap();
         assert_eq!(point.latitude, 47.3769);
@@ -160,8 +233,8 @@ mod tests {
 
     #[test]
     fn parse_coordinates_with_extra_whitespace() {
-        let result = Point::from_string("  47.3769  ,  8.5417  ");
-        assert!(result.is_ok());
+        let result = Point::parse("  47.3769  ,  8.5417  ");
+        assert_ok!(&result);
 
         let point = result.unwrap();
         assert_eq!(point.latitude, 47.3769);
@@ -169,63 +242,70 @@ mod tests {
     }
 
     #[test]
-    fn parse_negative_coordinates() {
-        let result = Point::from_string("-45.0,170.5");
-        assert!(result.is_ok());
-
-        let point = result.unwrap();
-        assert_eq!(point.latitude, -45.0);
-        assert_eq!(point.longitude, 170.5);
-    }
-
-    #[test]
-    fn parse_zero_coordinates() {
-        let result = Point::from_string("0.0,0.0");
-        assert!(result.is_ok());
-
-        let point = result.unwrap();
-        assert_eq!(point.latitude, 0.0);
-        assert_eq!(point.longitude, 0.0);
-    }
-
-    #[test]
     fn parse_invalid_format_single_number() {
-        let result = Point::from_string("47.3769");
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Invalid format. Expected 'latitude,longitude'"
-        );
+        let result = Point::parse("47.3769");
+        assert_err!(result);
     }
 
     #[test]
     fn parse_invalid_format_three_numbers() {
-        let result = Point::from_string("47.3769,8.5417,100");
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Invalid format. Expected 'latitude,longitude'"
-        );
+        let result = Point::parse("47.3769,8.5417,100");
+        assert_err!(result);
     }
 
     #[test]
     fn parse_invalid_format_empty_string() {
-        let result = Point::from_string("");
-        assert!(result.is_err());
+        let result = Point::parse("");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn parse_invalid_format_whitespace_only() {
+        let result = Point::parse(" ");
+        assert_err!(result);
     }
 
     #[test]
     fn parse_invalid_latitude_non_numeric() {
-        let result = Point::from_string("abc,8.5417");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid latitude");
+        let result = Point::parse("abc,8.5417");
+        assert_err!(result);
     }
 
     #[test]
     fn parse_invalid_longitude_non_numeric() {
-        let result = Point::from_string("47.3769,xyz");
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Invalid longitude");
+        let result = Point::parse("47.3769,xyz");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn latitude_too_high() {
+        let result = Point::parse("91.0,8.5417");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn latitude_too_low() {
+        let result = Point::parse("-91.0,8.5417");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn longitude_too_high() {
+        let result = Point::parse("47.3769,181.0");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn longitude_too_low() {
+        let result = Point::parse("47.3769,-181.0");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn coordinates_outside_switzerland_rejected() {
+        // Berlin coordinates
+        let result = Point::parse("52.5200,13.4050");
+        assert_err!(result);
     }
 
     // ========================================
@@ -253,9 +333,46 @@ mod tests {
     #[test]
     fn roundtrip_parse_and_format() {
         let original = "47.3769,8.5417";
-        let point = Point::from_string(original).unwrap();
+        let point = Point::parse(original).unwrap();
         let formatted = point.to_string_format();
         assert_eq!(formatted, original);
+    }
+
+    #[test]
+    fn display_trait_works() {
+        let point = Point::new(47.3769, 8.5417);
+        let displayed = format!("{}", point);
+        assert_eq!(displayed, "47.3769,8.5417");
+    }
+
+    // ========================================
+    // Helper Methods Tests
+    // ========================================
+
+    #[test]
+    fn latitude_method_returns_correct_value() {
+        let point = Point::new(47.3769, 8.5417);
+        assert_eq!(point.latitude(), 47.3769);
+    }
+
+    #[test]
+    fn longitude_method_returns_correct_value() {
+        let point = Point::new(47.3769, 8.5417);
+        assert_eq!(point.longitude(), 8.5417);
+    }
+
+    #[test]
+    fn parse_components_returns_tuple() {
+        let point = Point::new(47.3769, 8.5417);
+        let (lat, lon) = point.parse_components();
+        assert_eq!(lat, 47.3769);
+        assert_eq!(lon, 8.5417);
+    }
+
+    #[test]
+    fn as_str_returns_formatted_string() {
+        let point = Point::new(47.3769, 8.5417);
+        assert_eq!(point.as_str(), "47.3769,8.5417");
     }
 
     // ========================================
@@ -295,18 +412,77 @@ mod tests {
     // ========================================
 
     #[test]
-    fn all_canton_capitals_parse_correctly() {
+    fn all_canton_capitals_are_within_switzerland() {
         use crate::domain::test_data::CANTON_CAPITALS;
 
         for (city, coords) in CANTON_CAPITALS {
-            let result = Point::from_string(coords);
-            assert!(
-                result.is_ok(),
-                "Failed to parse coordinates for {}: {}",
+            let result = Point::parse(coords);
+            assert_ok!(
+                &result,
+                "Canton capital {} with coordinates {} should be valid",
                 city,
                 coords
             );
         }
+    }
+
+    // ========================================
+    // Swiss Boundary Edge Cases
+    // ========================================
+
+    #[test]
+    fn latitude_at_min_switzerland_boundary() {
+        let result = Point::parse("45.8,8.0");
+        assert_ok!(result);
+    }
+
+    #[test]
+    fn latitude_at_max_switzerland_boundary() {
+        let result = Point::parse("47.9,8.0");
+        assert_ok!(result);
+    }
+
+    #[test]
+    fn latitude_just_below_switzerland_boundary() {
+        let result = Point::parse("45.79,8.0");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn latitude_just_above_switzerland_boundary() {
+        let result = Point::parse("47.91,8.0");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn longitude_at_min_switzerland_boundary() {
+        let result = Point::parse("47.0,5.9");
+        assert_ok!(result);
+    }
+
+    #[test]
+    fn longitude_at_max_switzerland_boundary() {
+        let result = Point::parse("47.0,10.6");
+        assert_ok!(result);
+    }
+
+    #[test]
+    fn longitude_just_below_switzerland_boundary() {
+        let result = Point::parse("47.0,5.89");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn longitude_just_above_switzerland_boundary() {
+        let result = Point::parse("47.0,10.61");
+        assert_err!(result);
+    }
+
+    #[test]
+    fn multiple_whitespace_variations_rejected() {
+        assert_err!(Point::parse("   "));
+        assert_err!(Point::parse("\t"));
+        assert_err!(Point::parse("\n"));
     }
 
     // ========================================
@@ -351,8 +527,15 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn deserialize_coordinates_outside_switzerland_fails() {
+        let json = r#""52.5200,13.4050""#; // Berlin
+        let result: Result<Point, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+    }
+
     // ========================================
-    // Debug and Display Tests
+    // Debug and Clone Tests
     // ========================================
 
     #[test]
@@ -379,29 +562,9 @@ mod tests {
     // ========================================
 
     #[test]
-    fn parse_very_large_coordinates() {
-        let result = Point::from_string("89.999999,179.999999");
-        assert!(result.is_ok());
-
-        let point = result.unwrap();
-        assert_eq!(point.latitude, 89.999999);
-        assert_eq!(point.longitude, 179.999999);
-    }
-
-    #[test]
-    fn parse_very_small_coordinates() {
-        let result = Point::from_string("-89.999999,-179.999999");
-        assert!(result.is_ok());
-
-        let point = result.unwrap();
-        assert_eq!(point.latitude, -89.999999);
-        assert_eq!(point.longitude, -179.999999);
-    }
-
-    #[test]
     fn parse_high_precision_coordinates() {
-        let result = Point::from_string("47.123456789,8.987654321");
-        assert!(result.is_ok());
+        let result = Point::parse("47.123456789,8.987654321");
+        assert_ok!(&result);
 
         let point = result.unwrap();
         assert_eq!(point.latitude, 47.123456789);
@@ -410,8 +573,8 @@ mod tests {
 
     #[test]
     fn parse_integer_coordinates() {
-        let result = Point::from_string("47,8");
-        assert!(result.is_ok());
+        let result = Point::parse("47,8");
+        assert_ok!(&result);
 
         let point = result.unwrap();
         assert_eq!(point.latitude, 47.0);
