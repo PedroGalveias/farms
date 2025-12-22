@@ -106,43 +106,15 @@ mod tests {
 
     #[test]
     fn all_canton_capitals_are_within_switzerland() {
-        // All 26 Swiss canton capitals with their coordinates
-        let canton_capitals = vec![
-            ("Zürich", "47.3769,8.5417"),       // ZH
-            ("Bern", "46.9481,7.4474"),         // BE
-            ("Lucerne", "47.0502,8.3093"),      // LU
-            ("Altdorf", "46.8805,8.6444"),      // UR
-            ("Schwyz", "47.0207,8.6532"),       // SZ
-            ("Sarnen", "46.8960,8.2461"),       // OW
-            ("Stans", "46.9579,8.3659"),        // NW
-            ("Glarus", "47.0404,9.0679"),       // GL
-            ("Zug", "47.1724,8.5153"),          // ZG
-            ("Fribourg", "46.8063,7.1608"),     // FR
-            ("Solothurn", "47.2084,7.5371"),    // SO
-            ("Basel", "47.5596,7.5886"),        // BS
-            ("Liestal", "47.4814,7.7343"),      // BL
-            ("Schaffhausen", "47.6979,8.6344"), // SH
-            ("Herisau", "47.3859,9.2792"),      // AR
-            ("Appenzell", "47.3316,9.4094"),    // AI
-            ("St. Gallen", "47.4245,9.3767"),   // SG
-            ("Chur", "46.8499,9.5331"),         // GR
-            ("Aarau", "47.3925,8.0457"),        // AG
-            ("Frauenfeld", "47.5536,8.8988"),   // TG
-            ("Bellinzona", "46.1930,9.0208"),   // TI
-            ("Lausanne", "46.5197,6.6323"),     // VD
-            ("Sion", "46.2310,7.3603"),         // VS
-            ("Neuchâtel", "46.9896,6.9294"),    // NE
-            ("Geneva", "46.2044,6.1432"),       // GE
-            ("Delémont", "47.3653,7.3453"),     // JU
-        ];
+        use crate::domain::test_data::CANTON_CAPITALS;
 
-        for (city, coordinates) in canton_capitals {
-            let res = Coordinates::parse(coordinates.to_string());
+        for (city, coords) in CANTON_CAPITALS {
+            let result = Coordinates::parse(coords.to_string());
             assert_ok!(
-                &res,
-                "Canton capital {} with coordinates {} is valid",
+                &result,
+                "Canton capital {} with coordinates {} should be valid",
                 city,
-                coordinates
+                coords
             );
         }
     }
