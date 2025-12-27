@@ -1,23 +1,16 @@
-name: Deploy to Render
+name: Refresh Render DB
 
 permissions:
   contents: read
-  deployments: write
 
 on:
-  push:
-    tags:
-      - v**
+  schedule:
+    - cron: "0 0 1 * *"
   workflow_dispatch:
 
-concurrency:
-  group: render
-  cancel-in-progress: true
-
 jobs:
-  deployment:
+  refresh:
     runs-on: ubuntu-latest
-    environment: render
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -41,24 +34,11 @@ jobs:
           features: "rustls,postgres"
           args: --no-default-features
 
-      - name: Run DB migrations on DB
+      - name: Refresh Render DB
         env:
           RENDER_API_BASE_URL: "https://api.render.com/v1"
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-        run: python scripts/render_db_migrate.py
-
-      - name: Trigger deploy to Render
-        env:
-          deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          curl "$deploy_url"
-
-      #- uses: JorgeLNJunior/render-deploy@v1.4.6
-      #  with:
-      #    service_id: ${{ secrets.RENDER_SERVICE_ID }}
-      #    api_key: ${{ secrets.RENDER_API_KEY }}
-      #    clear_cache: true # Optional: Clear Render's build cache
-      #    wait_deploy: true
-      #    github_deployment: true
-      #    deployment_environment: "render"
-      #    github_token: ${{ secrets.GITHUB_TOKEN }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          RENDER_OWNER_ID: ${{ secrets.RENDER_OWNER_ID }}
+          RENDER_ENVIRONMENT_ID: ${{ secrets.RENDER_ENVIRONMENT_ID }}
+        run: python scripts/refresh_render.py

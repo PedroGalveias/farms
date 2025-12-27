@@ -1,0 +1,39 @@
+volumes:
+  postgres-data:
+
+services:
+  farms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_DATABASE__HOST: db
+      APP_DATABASE__USERNAME: postgres
+      APP_DATABASE__PASSWORD: password
+      APP_DATABASE__REQUIRE_SSL: false
+      APP_REDIS_URL: "redis://redis:6379"
+      APP_APPLICATION__BASE_URL: "http://localhost:8000"
+    ports:
+      - "8000:8000"
+
+  db:
+    image: postgres:18-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: farms
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h localhost -U $$POSTGRES_USER" ]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: valkey/valkey:9-alpine
+    ports:
+      - "6379:6379"

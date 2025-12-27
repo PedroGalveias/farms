@@ -15,6 +15,6 @@ docker run \
   --publish 6379:6379 \
   --detach \
   --name "valkey_$(date '+%s')" \
-  valkey/valkey:alpine
+  valkey/valkey:9-alpine
 
 echo >&2 "Valkey (Redis) is ready to go"
