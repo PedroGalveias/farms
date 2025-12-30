@@ -28,9 +28,7 @@ def send_get_request(url, headers):
         r.raise_for_status()
         return r
     except requests.exceptions.RequestException as e:
-        print("HTTP Error")
-        print(e.args[0])
-        exit(1)
+        raise Exception("HTTP Error: {}".format(e.args[0]))
 
 
 def send_post_request(url, headers, body=None):
@@ -40,9 +38,7 @@ def send_post_request(url, headers, body=None):
         r.raise_for_status()
         return r
     except requests.exceptions.RequestException as e:
-        print("HTTP Error")
-        print(e.args[0])
-        exit(1)
+        raise Exception("HTTP Error: {}".format(e.args[0]))
 
 
 def send_put_request(url, headers, body):
@@ -52,9 +48,7 @@ def send_put_request(url, headers, body):
         r.raise_for_status()
         return r
     except requests.exceptions.RequestException as e:
-        print("HTTP Error")
-        print(e.args[0])
-        exit(1)
+        raise Exception("HTTP Error: {}".format(e.args[0]))
 
 
 def send_delete_request(url, headers):
@@ -64,9 +58,7 @@ def send_delete_request(url, headers):
         r.raise_for_status()
         return r
     except requests.exceptions.RequestException as e:
-        print("HTTP Error")
-        print(e.args[0])
-        exit(1)
+        raise Exception("HTTP Error: {}".format(e.args[0]))
 
 
 def fetch_render_db_id(render_api_base_url, base_headers):
