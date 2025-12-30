@@ -1,5 +1,3 @@
-import time
-
 from render_shared_functions import *
 
 dotenv_file = load_dotenv()
@@ -92,6 +90,7 @@ new_render_db_connection_info = fetch_render_db_connection_info(
 )
 
 store_database_connection_in_dotenv(new_render_db_connection_info['externalConnectionString'], dotenv_file)
+wait_for_postgres(new_render_db_connection_info['externalConnectionString'])
 migrate_render_db()
 
 # update_render_service_env_variable(

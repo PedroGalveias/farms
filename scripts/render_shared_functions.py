@@ -1,8 +1,11 @@
 import os
 import subprocess
+import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import dotenv
+import psycopg2
 import requests
 
 
@@ -95,6 +98,29 @@ def store_in_dotenv(var_key, var_value, dotenv_file):
 def store_database_connection_in_dotenv(db_connection_string, dotenv_file):
     print('Storing Database Connection string')
     store_in_dotenv('DATABASE_URL', db_connection_string, dotenv_file)
+
+
+def wait_for_postgres(connection_string, max_retries=30, delay=2):
+    """Wait for PostgreSQL to be ready to accept connections."""
+    connection_info = urlparse(connection_string)
+    for i in range(max_retries):
+        try:
+            conn = psycopg2.connect(
+                host=connection_info.hostname,
+                port=connection_info.port,
+                user=connection_info.username,
+                password=connection_info.password,
+                database=connection_info.path[1:],
+                connect_timeout=3
+            )
+            conn.close()
+            print("PostgreSQL is ready!")
+            return True
+        except psycopg2.OperationalError as e:
+            print(f"Waiting for PostgreSQL... (attempt {i + 1}/{max_retries})")
+            time.sleep(delay)
+
+    raise Exception("PostgreSQL did not become ready in time")
 
 
 def migrate_render_db():

@@ -17,4 +17,5 @@ render_db_connection_info = fetch_render_db_connection_info(
     base_headers
 )
 store_database_connection_in_dotenv(render_db_connection_info['externalConnectionString'], dotenv_file)
+wait_for_postgres(render_db_connection_info['externalConnectionString'])
 migrate_render_db()
