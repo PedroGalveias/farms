@@ -1,5 +1,7 @@
+import os
 import subprocess
 
+import dotenv
 import requests
 
 
@@ -25,11 +27,15 @@ def fetch_render_db_connection_info(render_db_id, render_api_base_url, base_head
     return response.json()
 
 
-def store_database_connection_in_env(db_connection_string):
+def store_in_dotenv(var_key, var_value, dotenv_file):
+    print(f"Storing '{var_key}' in dotenv file.")
+    os.environ[var_key] = var_value
+    dotenv.set_key(dotenv_file, var_key, var_value)
+
+
+def store_database_connection_in_dotenv(db_connection_string, dotenv_file):
     print('Storing Database Connection string')
-    database_url_string = f'DATABASE_URL={db_connection_string}'
-    with open('.env', 'w') as env_file:
-        env_file.write(database_url_string)
+    store_in_dotenv('DATABASE_URL', db_connection_string, dotenv_file)
 
 
 def migrate_render_db():
