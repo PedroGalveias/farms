@@ -21,8 +21,7 @@ base_headers = {
 def delete_render_db(render_db_id):
     print('Deleting render db')
     request_url = f'{render_api_base_url}/postgres/{render_db_id}'
-    response = requests.delete(request_url, headers=base_headers.copy())
-    assert response.status_code == 204
+    send_delete_request(request_url, base_headers.copy())
 
 
 def create_new_render_db():
@@ -48,8 +47,7 @@ def create_new_render_db():
         'region': 'frankfurt',
         'ownerId': render_owner_id
     }
-    response = requests.post(request_url, headers=headers, json=body)
-    assert response.status_code == 201
+    response = send_post_request(request_url, headers, body)
     return response.json()
 
 
@@ -61,25 +59,23 @@ def update_render_service_env_variable(env_var_key, env_var_value):
     body = {
         'value': env_var_value
     }
-    response = requests.put(request_url, headers=headers, json=body)
-    assert response.status_code == 200
+    send_put_request(request_url, headers, body)
 
 
 def trigger_render_service_restart():
     print('Triggering render service restart')
     request_url = f'{render_api_base_url}/services/{render_service_id}/restart'
-    response = requests.post(request_url, headers=base_headers.copy())
-    assert response.status_code == 200
+    send_post_request(request_url, base_headers.copy())
 
 
 def test_render_service():
     print('Testing render service')
     request_url = f'{render_service_base_url}/health_check'
-    response = requests.get(request_url)
+    response = send_get_request(request_url, headers=None)
     assert response.status_code == 200
 
     request_url = f'{render_api_base_url}/farms'
-    response = requests.get(request_url)
+    response = send_get_request(request_url, headers=None)
     assert response.status_code == 200
 
 
