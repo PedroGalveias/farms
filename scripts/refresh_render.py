@@ -2,8 +2,7 @@ import time
 
 from render_shared_functions import *
 
-dotenv_file = dotenv.find_dotenv()
-dotenv.load_dotenv(dotenv_file)
+dotenv_file = load_dotenv()
 
 render_api_base_url = os.getenv('RENDER_API_BASE_URL').rstrip('/')
 render_api_key = os.getenv('RENDER_API_KEY')

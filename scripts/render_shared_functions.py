@@ -1,8 +1,21 @@
 import os
 import subprocess
+from pathlib import Path
 
 import dotenv
 import requests
+
+
+def load_dotenv():
+    print('Loading Dotenv')
+    dotenv_file = dotenv.find_dotenv()
+
+    if not dotenv_file:
+        dotenv_file = os.path.join(os.getcwd(), '.env')
+        Path(dotenv_file).touch()
+
+    dotenv.load_dotenv(dotenv_file)
+    return dotenv_file
 
 
 def send_get_request(url, headers):
