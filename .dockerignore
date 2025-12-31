@@ -1,5 +1,6 @@
 .env
 Dockerfile
+docker-compose.yml
 .gitignore
 
 tests/
