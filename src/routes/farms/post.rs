@@ -1,10 +1,13 @@
 use crate::{
+    configuration::Settings,
     domain::farm::{Address, Canton, Categories, Name, Point},
+    idempotency::{save_response, try_processing, IdempotencyError, IdempotencyNextAction},
     routes::farms::FarmError,
 };
 use actix_web::{web, HttpResponse};
 use anyhow::Context;
 use chrono::{DateTime, Utc};
+use deadpool_redis::Pool;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -15,13 +18,19 @@ pub struct FormData {
     canton: String,
     coordinates: String,
     categories: Vec<String>,
+    idempotency_key: String,
 }
 
 #[allow(clippy::async_yields_async)]
-#[tracing::instrument(name = "Adding a new farm", skip(body, pool))]
+#[tracing::instrument(
+    name = "Adding a new farm",
+    skip(body, pool, redis_pool, configuration)
+)]
 pub async fn create(
     body: web::Json<FormData>,
     pool: web::Data<PgPool>,
+    redis_pool: web::Data<Pool>,
+    configuration: web::Data<Settings>,
 ) -> Result<HttpResponse, FarmError> {
     // Validate farm's name
     let name =
@@ -52,10 +61,34 @@ pub async fn create(
         "create_categories",
         tracing::field::debug(&categories.as_vec()),
     );
+    span.record("idempotency_key", body.idempotency_key.as_str());
+
+    if let IdempotencyNextAction::ReturnSavedResponse(saved_response) = try_processing(
+        &redis_pool,
+        body.idempotency_key.as_str(),
+        &configuration.idempotency,
+    )
+    .await
+    .map_err(|e| match e {
+        IdempotencyError::ExpectedResponseNotFoundError => FarmError::DuplicateRequestConflict(e),
+        _ => FarmError::UnexpectedError(e.into()),
+    })? {
+        return Ok(saved_response);
+    }
 
     insert_farm(&pool, name, address, canton, coordinates, categories).await?;
 
-    Ok(HttpResponse::Ok().finish())
+    let response = HttpResponse::Created().finish();
+    let response = save_response(
+        &redis_pool,
+        body.idempotency_key.as_str(),
+        &configuration.idempotency,
+        response,
+    )
+    .await
+    .map_err(|e| FarmError::UnexpectedError(e.into()))?;
+
+    Ok(response)
 }
 
 #[tracing::instrument(name = "Saving new farm details in the database", skip(pool))]

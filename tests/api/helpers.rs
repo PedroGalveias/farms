@@ -1,8 +1,16 @@
-use farms::configuration::{get_configuration, DatabaseSettings};
-use farms::startup::{get_connection_pool, Application};
-use farms::telemetry::{get_subscriber, init_subscriber};
+use deadpool_redis::{
+    redis::{AsyncTypedCommands, RedisError},
+    Pool,
+};
+use farms::{
+    configuration::{get_configuration, DatabaseSettings, Settings},
+    startup::{get_connection_pool, get_redis_connection_pool, Application},
+    telemetry::{get_subscriber, init_subscriber},
+};
 use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
+use std::time::Duration;
+use tokio::time::sleep;
 use uuid::Uuid;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
@@ -25,6 +33,8 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
+    pub redis_pool: Pool,
+    pub configuration: Settings,
     pub api_client: reqwest::Client,
 }
 impl TestApp {
@@ -36,7 +46,7 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn post_farm(&self, body: serde_json::Value) -> reqwest::Response {
+    pub async fn post_farm(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
             .post(&format!("{}/farms", &self.address))
             .header("Content-Type", "application/json")
@@ -84,6 +94,9 @@ pub async fn spawn_app() -> TestApp {
     TestApp {
         address: format!("http://127.0.0.1:{}", application_port),
         db_pool: get_connection_pool(&configuration.database),
+        redis_pool: get_redis_connection_pool(&configuration.redis)
+            .expect("Failed to create redis pool"),
+        configuration,
         api_client,
     }
 }
@@ -109,4 +122,28 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database");
 
     connection_pool
+}
+
+pub async fn redis_exists_with_retry(
+    connection: &mut deadpool_redis::Connection,
+    key: &str,
+    max_attempts: u32,
+    delay_ms: u64,
+) -> Result<bool, RedisError> {
+    let mut attempts = 0;
+
+    loop {
+        attempts += 1;
+
+        match connection.exists(key).await {
+            Ok(exists) => return Ok(exists),
+            Err(err) => {
+                if attempts >= max_attempts {
+                    return Err(err);
+                }
+
+                sleep(Duration::from_millis(delay_ms)).await;
+            }
+        }
+    }
 }

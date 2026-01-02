@@ -10,6 +10,7 @@ use uuid::Uuid;
 mod get;
 mod post;
 
+use crate::idempotency::IdempotencyError;
 pub use get::get_all;
 pub use post::create;
 
@@ -34,12 +35,15 @@ pub enum FarmError {
     UnexpectedError(#[from] anyhow::Error),
     // `from` derives an implementation of From for the type
     // this field is also used as error `source`. this denotes what should be returned as root cause
+    #[error(transparent)]
+    DuplicateRequestConflict(#[from] IdempotencyError),
 }
 impl ResponseError for FarmError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::ValidationError(_) => StatusCode::BAD_REQUEST,
             Self::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::DuplicateRequestConflict(_) => StatusCode::CONFLICT,
         }
     }
 }

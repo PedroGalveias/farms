@@ -1,8 +1,20 @@
 application:
   port: 8000
 database:
+  max_connections: 100 # default
+  timeout_seconds: 5
   port: 5432
   database_name: "farms"
+idempotency:
+  engine: "redis"
+  redis:
+    key_prefix: "idem"
+    ttl_seconds: 600 # 10 min
+  #postgres:
+redis:
+  pool_max_size: 20
+  timeout_seconds: 5
+  session_key_prefix: "sess"
 email_client:
   base_url: "localhost"
   sender_email: "test@farms.com"

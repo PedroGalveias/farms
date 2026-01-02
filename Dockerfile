@@ -1,6 +1,7 @@
 FROM lukemathwalker/cargo-chef:latest-rust-1-alpine3.22 AS chef
 WORKDIR /app
 RUN apk add --no-cache lld clang openssl-dev
+ENV CARGO_TERM_PROGRESS_WHEN=never
 
 FROM chef AS planner
 COPY . .
