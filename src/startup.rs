@@ -1,5 +1,5 @@
 use crate::configuration::{DatabaseSettings, Settings};
-use crate::routes::{create, farms, health_check};
+use crate::routes::{farms, health_check};
 use actix_session::storage::RedisSessionStore;
 use actix_web::{dev::Server, web, web::Data, App, HttpServer};
 use secrecy::{ExposeSecret, SecretString};
@@ -70,8 +70,8 @@ pub async fn run(
             //))
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
-            .route("/farms", web::post().to(create))
-            .route("/farms", web::get().to(farms))
+            .route("/farms", web::get().to(farms::get_all))
+            .route("/farms", web::post().to(farms::create))
             // Get pointer copy and attach it to the application state
             .app_data(db_pool.clone())
             .app_data(base_url.clone())

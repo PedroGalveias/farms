@@ -4,8 +4,10 @@ use fake::{
     faker::{address::de_de::StreetName, name::de_de::Name as FakerName},
     Fake,
 };
-use farms::domain::farm::{Address, Canton, Categories, Name, Point};
-use farms::routes::Farm;
+use farms::{
+    domain::farm::{Address, Canton, Categories, Name, Point},
+    routes::farms::Farm,
+};
 use rand::Rng;
 use uuid::Uuid;
 
