@@ -1,3 +1,4 @@
+use crate::domain::Point;
 use crate::errors::error_chain_fmt;
 use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
 use anyhow::Context;
@@ -21,7 +22,7 @@ pub struct Farm {
     pub name: String,
     pub address: String,
     pub canton: String,
-    pub coordinates: String,
+    pub coordinates: Point,
     pub categories: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -33,6 +34,10 @@ pub async fn create(
     body: web::Json<FormData>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, FarmError> {
+    // Validate farm's coordinates
+    let coordinates =
+        Point::parse(&body.coordinates).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
     // Record form fields in the tracing span
     let span = tracing::Span::current();
     span.record("create_name", body.name.as_str());
@@ -41,7 +46,7 @@ pub async fn create(
     span.record("create_coordinates", body.coordinates.as_str());
     span.record("create_categories", tracing::field::debug(&body.categories));
 
-    insert_farm(&pool, &body).await?;
+    insert_farm(&pool, &body, coordinates).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -77,7 +82,11 @@ impl std::fmt::Debug for FarmError {
 }
 
 #[tracing::instrument(name = "Saving new farm details in the database", skip(form, pool))]
-pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), FarmError> {
+pub async fn insert_farm(
+    pool: &PgPool,
+    form: &FormData,
+    coordinates: Point,
+) -> Result<(), FarmError> {
     sqlx::query!(
         r#"
             INSERT INTO farms (
@@ -88,7 +97,7 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), FarmError
         form.name,
         form.address,
         form.canton,
-        form.coordinates,
+        coordinates as Point,
         &form.categories,
         Utc::now(),
         Option::<DateTime<Utc>>::None
@@ -110,7 +119,7 @@ pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, FarmError> {
             name,
             address,
             canton,
-            coordinates,
+            coordinates as "coordinates: Point",
             categories as "categories: Vec<String>",
             created_at,
             updated_at
