@@ -1,7 +1,8 @@
+use crate::impl_sqlx_for_vec_string_domain_type;
 use std::collections::HashSet;
 use thiserror::Error;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Categories(Vec<String>);
 
 #[derive(Debug, Error)]
@@ -121,6 +122,27 @@ impl std::fmt::Display for Categories {
         write!(f, "{}", self.0.join(", "))
     }
 }
+
+impl serde::Serialize for Categories {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Categories {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec = Vec::<String>::deserialize(deserializer)?;
+        Categories::parse(vec).map_err(serde::de::Error::custom)
+    }
+}
+
+impl_sqlx_for_vec_string_domain_type!(Categories);
 
 #[cfg(test)]
 mod tests {

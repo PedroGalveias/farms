@@ -1,8 +1,9 @@
+use crate::impl_sqlx_for_string_domain_type;
 use std::fmt::Display;
 use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FarmName(String);
 
 #[derive(Debug, Error)]
@@ -65,6 +66,29 @@ impl Display for FarmName {
         self.0.fmt(f)
     }
 }
+
+impl serde::Serialize for FarmName {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FarmName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        // When deserializing from API responses, trust the data is valid
+        // since it came from our own database
+        Ok(FarmName(s))
+    }
+}
+
+impl_sqlx_for_string_domain_type!(FarmName);
 
 #[cfg(test)]
 mod tests {

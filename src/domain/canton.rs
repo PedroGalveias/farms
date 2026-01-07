@@ -1,6 +1,7 @@
+use crate::impl_sqlx_for_string_domain_type;
 use std::fmt::Display;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Canton(String);
 
 #[derive(Debug, thiserror::Error)]
@@ -51,6 +52,27 @@ impl Display for Canton {
         self.0.fmt(f)
     }
 }
+
+impl serde::Serialize for Canton {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Canton {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Canton::parse(s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl_sqlx_for_string_domain_type!(Canton);
 
 #[cfg(test)]
 mod tests {
