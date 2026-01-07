@@ -1,4 +1,4 @@
-use crate::domain::Point;
+use crate::domain::{Address, Canton, Categories, FarmName, Point};
 use crate::errors::error_chain_fmt;
 use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
 use anyhow::Context;
@@ -19,13 +19,37 @@ pub struct FormData {
 #[derive(serde::Deserialize, serde::Serialize, sqlx::FromRow)]
 pub struct Farm {
     pub id: Uuid,
-    pub name: String,
-    pub address: String,
-    pub canton: String,
+    #[serde(serialize_with = "serialize_farm_name")]
+    pub name: FarmName,
+    #[serde(serialize_with = "serialize_address")]
+    pub address: Address,
+    #[serde(serialize_with = "serialize_canton")]
+    pub canton: Canton,
     pub coordinates: Point,
-    pub categories: Vec<String>,
+    pub categories: Categories,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+fn serialize_farm_name<S>(name: &FarmName, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(name.as_str())
+}
+
+fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(address.as_str())
+}
+
+fn serialize_canton<S>(canton: &Canton, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(canton.as_str())
 }
 
 #[allow(clippy::async_yields_async)]
@@ -34,19 +58,37 @@ pub async fn create(
     body: web::Json<FormData>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, FarmError> {
+    // Validate farm's name
+    let name = FarmName::parse(body.name.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
+    let address = Address::parse(body.address.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
+    // Validate farm's canton
+    let canton = Canton::parse(body.canton.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
     // Validate farm's coordinates
     let coordinates =
         Point::parse(&body.coordinates).map_err(|e| FarmError::ValidationError(e.to_string()))?;
 
+    // Validate farm's categories
+    let categories = Categories::parse(body.categories.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
     // Record form fields in the tracing span
     let span = tracing::Span::current();
-    span.record("create_name", body.name.as_str());
-    span.record("create_address", body.address.as_str());
-    span.record("create_canton", body.canton.as_str());
-    span.record("create_coordinates", body.coordinates.as_str());
-    span.record("create_categories", tracing::field::debug(&body.categories));
+    span.record("create_name", name.as_str());
+    span.record("create_address", address.as_str());
+    span.record("create_canton", canton.as_str());
+    span.record("create_coordinates", coordinates.as_str());
+    span.record(
+        "create_categories",
+        tracing::field::debug(&categories.as_vec()),
+    );
 
-    insert_farm(&pool, &body, coordinates).await?;
+    insert_farm(&pool, name, address, canton, coordinates, categories).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -81,11 +123,14 @@ impl std::fmt::Debug for FarmError {
     }
 }
 
-#[tracing::instrument(name = "Saving new farm details in the database", skip(form, pool))]
+#[tracing::instrument(name = "Saving new farm details in the database", skip(pool))]
 pub async fn insert_farm(
     pool: &PgPool,
-    form: &FormData,
+    name: FarmName,
+    address: Address,
+    canton: Canton,
     coordinates: Point,
+    categories: Categories,
 ) -> Result<(), FarmError> {
     sqlx::query!(
         r#"
@@ -94,11 +139,11 @@ pub async fn insert_farm(
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
         Uuid::new_v4(),
-        form.name,
-        form.address,
-        form.canton,
-        coordinates as Point,
-        &form.categories,
+        &name as &FarmName,
+        &address as &Address,
+        &canton as &Canton,
+        &coordinates as &Point,
+        &categories as &Categories,
         Utc::now(),
         Option::<DateTime<Utc>>::None
     )
@@ -116,11 +161,11 @@ pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, FarmError> {
         r#"
         SELECT
             id,
-            name,
-            address,
-            canton,
+            name as "name: FarmName",
+            address as "address: Address",
+            canton as "canton: Canton",
             coordinates as "coordinates: Point",
-            categories as "categories: Vec<String>",
+            categories as "categories: Categories",
             created_at,
             updated_at
         FROM farms
