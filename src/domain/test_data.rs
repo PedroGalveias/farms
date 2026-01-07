@@ -28,3 +28,43 @@ pub const CANTON_CAPITALS: &[(&str, &str)] = &[
     ("Geneva", "46.2044,6.1432"),
     ("Delémont", "47.3653,7.3453"),
 ];
+
+/// Valid Swiss addresses representing different formats and language regions
+pub const VALID_SWISS_ADDRESSES: &[&str] = &[
+    // German-speaking region (Zürich, Bern, etc.)
+    "Bahnhofstrasse 1, 8001 Zürich",
+    "Hauptstrasse 23, 3000 Bern",
+    "Dorfstrasse 12, 6340 Baar",
+    "Bärenplatz 3, 3011 Bern",
+    "Löwenstrasse 45, 8001 Zürich",
+    "Rütistrasse 8, 8952 Schlieren",
+    "Schützengasse 10, 8001 Zürich",
+    // French-speaking region
+    "Rue du Rhône 65, 1204 Genève",
+    "Avenue de la Gare 5, 1003 Lausanne",
+    "Rue de l'Hôtel-de-Ville 1, 1204 Genève",
+    "Quai du Général-Guisan 28, 1204 Genève",
+    "Place de la Gare 10, 1003 Lausanne",
+    // Italian-speaking region
+    "Via Nassa 5, 6900 Lugano",
+    "Via della Stazione 8, 6900 Lugano",
+    "Piazza della Riforma 1, 6900 Lugano",
+    // Romansh-speaking region
+    "Via Maistra 10, 7500 St. Moritz",
+    // Addresses with building/apartment details
+    "Wohnung 3B, Bahnhofstrasse 12, 8001 Zürich",
+    "c/o Müller, Hauptstrasse 45, 3000 Bern",
+    "Appartement 5, Rue du Rhône 10, 1204 Genève",
+    "2. Stock, Dorfstrasse 8, 6340 Baar",
+    // PO Box addresses
+    "Postfach 1234, 3000 Bern",
+    "Case postale 456, 1211 Genève",
+    "Casella postale 789, 6900 Lugano",
+    // Addresses with house number suffixes
+    "Hauptstrasse 12a, 3000 Bern",
+    "Dorfstrasse 5B, 8001 Zürich",
+    "Via Nassa 10bis, 6900 Lugano",
+    // Company addresses
+    "Firma AG, Industriestrasse 1, 8050 Zürich",
+    "Société SA, Rue du Commerce 5, 1204 Genève",
+];
