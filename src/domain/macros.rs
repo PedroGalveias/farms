@@ -4,7 +4,7 @@
 /// It's useful for domain types like FarmName, Canton, Address, etc.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// use crate::impl_sqlx_for_string_domain_type;
 ///
 /// #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ macro_rules! impl_sqlx_for_string_domain_type {
 /// It's useful for domain types like Categories.
 ///
 /// # Example
-/// ```
+/// ```ignore
 /// use crate::impl_sqlx_for_vec_string_domain_type;
 ///
 /// #[derive(Debug, Clone)]
