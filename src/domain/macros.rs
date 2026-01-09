@@ -1,6 +1,7 @@
 /// Macro to implement common sqlx traits for a new type wrappers around String
 ///
 /// This macro implements Type, Encode, and Decode for types that wrap a String.
+/// This is used to convert between the service types and the database types.
 /// It's useful for domain types like FarmName, Canton, Address, etc.
 ///
 /// # Example
@@ -44,6 +45,7 @@ macro_rules! impl_sqlx_for_string_domain_type {
 /// Macro to implement common sqlx traits for new type wrappers around Vec<String>
 ///
 /// This macro implements Type, Encode, and Decode for types that wrap a Vec<String>.
+/// This is used to convert between the service types and the database types.
 /// It's useful for domain types like Categories.
 ///
 /// # Example
