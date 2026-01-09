@@ -1,10 +1,9 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::routes::{create, farms, health_check};
-use actix_web::dev::Server;
-use actix_web::web::Data;
-use actix_web::{web, App, HttpServer};
-use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use actix_session::storage::RedisSessionStore;
+use actix_web::{dev::Server, web, web::Data, App, HttpServer};
+use secrecy::{ExposeSecret, SecretString};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
 
@@ -13,7 +12,7 @@ pub struct Application {
     server: Server,
 }
 impl Application {
-    pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
+    pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
         let address = format!(
             "{}:{}",
@@ -26,6 +25,7 @@ impl Application {
             listener,
             connection_pool,
             configuration.application.base_url,
+            configuration.redis_uri,
         )
         .await?;
 
@@ -53,15 +53,21 @@ pub async fn run(
     listener: TcpListener,
     db_pool: PgPool,
     base_url: String,
-) -> Result<Server, std::io::Error> {
+    redis_uri: SecretString,
+) -> Result<Server, anyhow::Error> {
     // Wrap the connection in a smart pointer
     let db_pool = Data::new(db_pool);
     let base_url = Data::new(ApplicationBaseUrl(base_url));
+    let _redis_store = RedisSessionStore::new(redis_uri.expose_secret()).await?;
 
     // Capture the `connection` from the surrounding environment
     let server = HttpServer::new(move || {
         App::new()
             // Middlewares are added using the `wrap` method on `App`
+            //.wrap(SessionMiddleware::new(
+            //    redis_store.clone(),
+            //    secret_key.clone()
+            //))
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
             .route("/farms", web::post().to(create))
