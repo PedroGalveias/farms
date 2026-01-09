@@ -1,5 +1,5 @@
 use sqlx::encode::IsNull;
-use sqlx::error::BoxDynError;
+use sqlx::postgres::types::PgPoint;
 use sqlx::postgres::{PgArgumentBuffer, PgTypeInfo, PgValueRef};
 use sqlx::{Decode, Encode, Postgres, Type};
 use thiserror::Error;
@@ -126,37 +126,41 @@ impl Type<Postgres> for Point {
     }
 }
 
+// Convert between our Point and sqlx::types::PgPoint
+impl From<Point> for PgPoint {
+    fn from(point: Point) -> Self {
+        PgPoint {
+            x: point.longitude,
+            y: point.latitude,
+        }
+    }
+}
+
+impl From<PgPoint> for Point {
+    fn from(pg_point: PgPoint) -> Self {
+        Point {
+            longitude: pg_point.x,
+            latitude: pg_point.y,
+        }
+    }
+}
+
 // Encode Point to PostgreSQL
 impl Encode<'_, Postgres> for Point {
-    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
-        // PostgreSQL POINT format: (x, y) = (longitude, latitude)
-        let point_str = format!("({},{})", self.longitude, self.latitude);
-        buf.extend_from_slice(point_str.as_bytes());
-        Ok(IsNull::No)
+    fn encode_by_ref(
+        &self,
+        buf: &mut PgArgumentBuffer,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        let pg_point: PgPoint = (*self).into();
+        <PgPoint as Encode<Postgres>>::encode_by_ref(&pg_point, buf)
     }
 }
 
 // Decode Point from PostgreSQL
-impl Decode<'_, Postgres> for Point {
-    fn decode(value: PgValueRef<'_>) -> Result<Self, BoxDynError> {
-        // PostgreSQL returns POINT as "(x,y)" string
-        let s = <&str as Decode<Postgres>>::decode(value)?;
-
-        // Remove parentheses and split
-        let s = s.trim_matches(|c| c == '(' || c == ')');
-        let parts: Vec<&str> = s.split(',').collect();
-
-        if parts.len() != 2 {
-            return Err("Invalid POINT format".into());
-        }
-
-        let longitude = parts[0].trim().parse::<f64>()?;
-        let latitude = parts[1].trim().parse::<f64>()?;
-
-        Ok(Point {
-            longitude,
-            latitude,
-        })
+impl<'r> Decode<'r, Postgres> for Point {
+    fn decode(value: PgValueRef<'r>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let pg_point = <PgPoint as Decode<Postgres>>::decode(value)?;
+        Ok(pg_point.into())
     }
 }
 
