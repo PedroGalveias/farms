@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            name as \"name: FarmName\",\n            address as \"address: Address\",\n            canton as \"canton: Canton\",\n            coordinates as \"coordinates: Point\",\n            categories as \"categories: Categories\",\n            created_at,\n            updated_at\n        FROM farms\n        ORDER BY created_at DESC\n        ",
+  "query": "\n        SELECT\n            id,\n            name as \"name: Name\",\n            address as \"address: Address\",\n            canton as \"canton: Canton\",\n            coordinates as \"coordinates: Point\",\n            categories as \"categories: Categories\",\n            created_at,\n            updated_at\n        FROM farms\n        ORDER BY created_at DESC\n        ",
   "describe": {
     "columns": [
       {
@@ -10,7 +10,7 @@
       },
       {
         "ordinal": 1,
-        "name": "name: FarmName",
+        "name": "name: Name",
         "type_info": "Text"
       },
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "53ef7338f859da3064b70ba60369762f0c4105394ba0aa66dec997f5eb50fdf3"
+  "hash": "22f4fb2f68cc31b8dd0cc2ce18d3193a965e6d959dba73a0e1255dbd9db87d45"
 }

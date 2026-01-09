@@ -1,10 +1,10 @@
 use crate::helpers::{spawn_app, TestApp};
 use chrono::Utc;
 use fake::{
-    faker::{address::de_de::StreetName, name::de_de::Name},
+    faker::{address::de_de::StreetName, name::de_de::Name as FakerName},
     Fake,
 };
-use farms::domain::{Address, Canton, Categories, FarmName, Point};
+use farms::domain::{Address, Canton, Categories, Name, Point};
 use farms::routes::Farm;
 use rand::Rng;
 use std::collections::HashSet;
@@ -33,7 +33,7 @@ fn generate_swiss_canton() -> Canton {
 
 fn generate_farm() -> Farm {
     let id = Uuid::new_v4();
-    let name = FarmName::parse(Name().fake()).expect("Generated invalid farm name");
+    let name = Name::parse(FakerName().fake()).expect("Generated invalid farm name");
     let address = Address::parse(StreetName().fake()).expect("Generated invalid address");
     let canton = generate_swiss_canton();
     let coordinates_str = generate_swiss_coordinates();
@@ -69,7 +69,7 @@ fn farm_to_json(farm: &Farm) -> serde_json::Value {
 async fn insert_farm_in_db(app: &TestApp, farm: &Farm) {
     sqlx::query!(r#" INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
                 farm.id,
-                &farm.name as &FarmName,
+                &farm.name as &Name,
                 &farm.address as &Address,
                 &farm.canton as &Canton,
                 &farm.coordinates as &Point,
@@ -171,7 +171,7 @@ async fn create_farm_returns_a_200_for_valid_body_data() {
 
     let saved = sqlx::query!(
         r#"
-        SELECT id, name as "name: FarmName", address as "address: Address", canton "canton: Canton", coordinates as "coordinates: Point", categories
+        SELECT id, name as "name: Name", address as "address: Address", canton "canton: Canton", coordinates as "coordinates: Point", categories
         FROM farms
         "#
     )

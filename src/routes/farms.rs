@@ -1,4 +1,4 @@
-use crate::domain::{Address, Canton, Categories, FarmName, Point};
+use crate::domain::{Address, Canton, Categories, Name, Point};
 use crate::errors::error_chain_fmt;
 use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
 use anyhow::Context;
@@ -19,7 +19,7 @@ pub struct FormData {
 #[derive(serde::Deserialize, serde::Serialize, sqlx::FromRow)]
 pub struct Farm {
     pub id: Uuid,
-    pub name: FarmName,
+    pub name: Name,
     pub address: Address,
     pub canton: Canton,
     pub coordinates: Point,
@@ -35,8 +35,8 @@ pub async fn create(
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, FarmError> {
     // Validate farm's name
-    let name = FarmName::parse(body.name.clone())
-        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    let name =
+        Name::parse(body.name.clone()).map_err(|e| FarmError::ValidationError(e.to_string()))?;
 
     let address = Address::parse(body.address.clone())
         .map_err(|e| FarmError::ValidationError(e.to_string()))?;
@@ -102,7 +102,7 @@ impl std::fmt::Debug for FarmError {
 #[tracing::instrument(name = "Saving new farm details in the database", skip(pool))]
 pub async fn insert_farm(
     pool: &PgPool,
-    name: FarmName,
+    name: Name,
     address: Address,
     canton: Canton,
     coordinates: Point,
@@ -115,7 +115,7 @@ pub async fn insert_farm(
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
         Uuid::new_v4(),
-        &name as &FarmName,
+        &name as &Name,
         &address as &Address,
         &canton as &Canton,
         &coordinates as &Point,
@@ -137,7 +137,7 @@ pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, FarmError> {
         r#"
         SELECT
             id,
-            name as "name: FarmName",
+            name as "name: Name",
             address as "address: Address",
             canton as "canton: Canton",
             coordinates as "coordinates: Point",

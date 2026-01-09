@@ -2,7 +2,7 @@
 ///
 /// This macro implements Type, Encode, and Decode for types that wrap a String.
 /// This is used to convert between the service types and the database types.
-/// It's useful for domain types like FarmName, Canton, Address, etc.
+/// It's useful for domain types like Name, Canton, Address, etc.
 ///
 /// # Example
 /// ```ignore
