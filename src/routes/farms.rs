@@ -19,37 +19,13 @@ pub struct FormData {
 #[derive(serde::Deserialize, serde::Serialize, sqlx::FromRow)]
 pub struct Farm {
     pub id: Uuid,
-    #[serde(serialize_with = "serialize_farm_name")]
     pub name: FarmName,
-    #[serde(serialize_with = "serialize_address")]
     pub address: Address,
-    #[serde(serialize_with = "serialize_canton")]
     pub canton: Canton,
     pub coordinates: Point,
     pub categories: Categories,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
-}
-
-fn serialize_farm_name<S>(name: &FarmName, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(name.as_str())
-}
-
-fn serialize_address<S>(address: &Address, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(address.as_str())
-}
-
-fn serialize_canton<S>(canton: &Canton, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(canton.as_str())
 }
 
 #[allow(clippy::async_yields_async)]
