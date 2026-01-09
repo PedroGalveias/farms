@@ -4,7 +4,7 @@ use fake::{
     faker::{address::de_de::StreetName, name::de_de::Name as FakerName},
     Fake,
 };
-use farms::domain::{Address, Canton, Categories, Name, Point};
+use farms::domain::farm::{Address, Canton, Categories, Name, Point};
 use farms::routes::Farm;
 use rand::Rng;
 use std::collections::HashSet;

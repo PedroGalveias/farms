@@ -32,14 +32,16 @@ farms/
 │   ├── telemetry.rs         # Logging configuration
 │   ├── errors.rs            # Error utilities
 │   ├── domain/              # Domain layer (business logic & validation)
-│   │   ├── mod.rs           # Domain module exports
-│   │   ├── address.rs       # Validated address type
-│   │   ├── canton.rs        # Validated Swiss canton type
-│   │   ├── categories.rs    # Validated categories type
-│   │   ├── farm_name.rs     # Validated farm name type
-│   │   ├── macros.rs        # Macros for sqlx trait implementations
-│   │   ├── point.rs         # Validated coordinates type
-│   │   └── test_data.rs     # Shared test data constants
+│   │   ├── mod.rs           # Domain module exports (farm, macros, test_data)
+│   │   ├── macros.rs        # Shared macros for sqlx trait implementations
+│   │   ├── test_data.rs     # Shared test data constants (reusable)
+│   │   └── farm/            # Farm entity domain logic
+│   │       ├── mod.rs       # Farm domain exports (Address, Canton, etc.)
+│   │       ├── address.rs   # Validated address type
+│   │       ├── canton.rs    # Validated Swiss canton type
+│   │       ├── categories.rs # Validated categories type
+│   │       ├── farm_name.rs # Validated farm name type
+│   │       └── point.rs     # Validated coordinates type
 │   └── routes/
 │       ├── mod.rs           # Routes module exports
 │       ├── health_check.rs  # Health check endpoint

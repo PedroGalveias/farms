@@ -1,15 +1,8 @@
-mod address;
-mod canton;
-mod categories;
-mod name;
-mod point;
+// Shared utilities
+pub mod macros;
 
-mod macros;
 #[cfg(test)]
-mod test_data;
+pub mod test_data;
 
-pub use address::{Address, AddressError};
-pub use canton::{Canton, CantonError};
-pub use categories::{Categories, CategoriesError};
-pub use name::{Name, NameError};
-pub use point::{Point, PointError};
+// Domain entities
+pub mod farm;
