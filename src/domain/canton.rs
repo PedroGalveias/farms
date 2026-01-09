@@ -53,6 +53,7 @@ impl Display for Canton {
     }
 }
 
+// Serialize for JSON API responses
 impl serde::Serialize for Canton {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -62,6 +63,7 @@ impl serde::Serialize for Canton {
     }
 }
 
+// Deserialize from JSON API requests
 impl<'de> serde::Deserialize<'de> for Canton {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

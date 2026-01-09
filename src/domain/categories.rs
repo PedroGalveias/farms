@@ -7,14 +7,14 @@ pub struct Categories(Vec<String>);
 
 #[derive(Debug, Error)]
 pub enum CategoriesError {
-    #[error("Categories list cannot be empty")]
+    #[error("Categories list cannot be empty.")]
     EmptyCategories,
 
-    #[error("Category '{0}' is empty or whitespace")]
+    #[error("Category '{0}' is empty or whitespace.")]
     EmptyCategoryValue(String),
 
     #[error(
-        "Categories '{category}' exceeds maximum length of {max} characters (actual: {actual}"
+        "Categories '{category}' exceeds maximum length of {max} characters (actual: {actual}."
     )]
     CategoryLengthTooLong {
         category: String,
@@ -22,10 +22,10 @@ pub enum CategoriesError {
         actual: usize,
     },
 
-    #[error("Too many categories: {count}. Maximim allowed is {max}")]
+    #[error("Too many categories: {count}. Maximim allowed is {max}.")]
     TooManyCategories { count: usize, max: usize },
 
-    #[error("Duplicate category: '{0}'")]
+    #[error("Duplicate category: '{0}'.")]
     DuplicateCategory(String),
 }
 
@@ -92,7 +92,6 @@ impl Categories {
         &self.0
     }
 
-    // Convert into a inner Vec
     pub fn into_inner(self) -> Vec<String> {
         self.0
     }
@@ -123,6 +122,7 @@ impl std::fmt::Display for Categories {
     }
 }
 
+// Serialize for JSON API responses
 impl serde::Serialize for Categories {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -132,6 +132,7 @@ impl serde::Serialize for Categories {
     }
 }
 
+// Deserialize from JSON API requests
 impl<'de> serde::Deserialize<'de> for Categories {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

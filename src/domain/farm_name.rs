@@ -14,7 +14,7 @@ pub enum FarmNameError {
     #[error("Farm name is too long (max 256 characters, got {0}.")]
     TooLong(usize),
 
-    #[error("Farm name contains forbidden characters: {0}")]
+    #[error("Farm name contains forbidden characters: {0}.")]
     ForbiddenCharacters(String),
 }
 
@@ -24,7 +24,7 @@ impl FarmName {
     /// Cannot be empty or only whitespaces
     /// Must be between 1 and 256 characters
     /// No forbidden characters
-    /// Automatically trims whitespace
+    /// Automatically trim whitespace
     pub fn parse(s: String) -> Result<FarmName, FarmNameError> {
         let is_empty_or_whitespace = s.trim().is_empty();
 
@@ -67,6 +67,7 @@ impl Display for FarmName {
     }
 }
 
+// Serialize for JSON API responses
 impl serde::Serialize for FarmName {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -76,6 +77,7 @@ impl serde::Serialize for FarmName {
     }
 }
 
+// Deserialize from JSON API requests
 impl<'de> serde::Deserialize<'de> for FarmName {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

@@ -71,6 +71,7 @@ impl Display for Address {
     }
 }
 
+// Serialize for JSON API responses
 impl serde::Serialize for Address {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -80,6 +81,7 @@ impl serde::Serialize for Address {
     }
 }
 
+// Deserialize from JSON API requests
 impl<'de> serde::Deserialize<'de> for Address {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

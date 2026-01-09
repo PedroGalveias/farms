@@ -166,7 +166,6 @@ impl serde::Serialize for Point {
     where
         S: serde::Serializer,
     {
-        // Return as "latitude,longitude" string for API compatibility
         serializer.serialize_str(&self.to_string_format())
     }
 }
@@ -187,10 +186,6 @@ mod tests {
     use super::Point;
     use claims::{assert_err, assert_ok};
 
-    // ========================================
-    // Construction Tests
-    // ========================================
-
     #[test]
     fn create_point_with_new() {
         let point = Point::new(47.3769, 8.5417);
@@ -206,10 +201,6 @@ mod tests {
         assert_eq!(point1.latitude, 47.3769);
         assert_eq!(point2.latitude, 47.3769);
     }
-
-    // ========================================
-    // String Parsing Tests (with validation)
-    // ========================================
 
     #[test]
     fn parse_valid_coordinates_string() {
@@ -308,10 +299,6 @@ mod tests {
         assert_err!(result);
     }
 
-    // ========================================
-    // String Formatting Tests
-    // ========================================
-
     #[test]
     fn format_point_to_string() {
         let point = Point::new(47.3769, 8.5417);
@@ -345,10 +332,6 @@ mod tests {
         assert_eq!(displayed, "47.3769,8.5417");
     }
 
-    // ========================================
-    // Helper Methods Tests
-    // ========================================
-
     #[test]
     fn latitude_method_returns_correct_value() {
         let point = Point::new(47.3769, 8.5417);
@@ -374,10 +357,6 @@ mod tests {
         let point = Point::new(47.3769, 8.5417);
         assert_eq!(point.as_str(), "47.3769,8.5417");
     }
-
-    // ========================================
-    // Equality Tests
-    // ========================================
 
     #[test]
     fn points_with_same_coordinates_are_equal() {
@@ -407,10 +386,6 @@ mod tests {
         assert_ne!(point1, point2);
     }
 
-    // ========================================
-    // Swiss Canton Capital Tests
-    // ========================================
-
     #[test]
     fn all_canton_capitals_are_within_switzerland() {
         use crate::domain::test_data::CANTON_CAPITALS;
@@ -425,10 +400,6 @@ mod tests {
             );
         }
     }
-
-    // ========================================
-    // Swiss Boundary Edge Cases
-    // ========================================
 
     #[test]
     fn latitude_at_min_switzerland_boundary() {
@@ -485,10 +456,6 @@ mod tests {
         assert_err!(Point::parse("\n"));
     }
 
-    // ========================================
-    // Serde JSON Tests
-    // ========================================
-
     #[test]
     fn serialize_point_to_json() {
         let point = Point::new(47.3769, 8.5417);
@@ -534,10 +501,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // ========================================
-    // Debug and Clone Tests
-    // ========================================
-
     #[test]
     fn debug_format_shows_structure() {
         let point = Point::new(47.3769, 8.5417);
@@ -556,10 +519,6 @@ mod tests {
         assert_eq!(point1.latitude, point2.latitude);
         assert_eq!(point1.longitude, point2.longitude);
     }
-
-    // ========================================
-    // Edge Case Tests
-    // ========================================
 
     #[test]
     fn parse_high_precision_coordinates() {
