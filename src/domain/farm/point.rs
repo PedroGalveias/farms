@@ -15,17 +15,17 @@ pub struct Point {
 
 #[derive(Debug, Error)]
 pub enum PointError {
-    #[error("Invalid coordinate format. Expected 'latitude,longitude' (e.g., '47.3769,8.5417')")]
+    #[error("Invalid coordinate format. Expected 'latitude,longitude' (e.g., '47.3769,8.5417').")]
     InvalidFormat,
 
-    #[error("Invalid latitude. Must be between -90 and 90")]
-    InvalidLatitude(f64),
+    #[error("Invalid latitude. Must be between -90 and 90.")]
+    InvalidLatitude,
 
-    #[error("Invalid longitude. Must be between -180 and 180")]
-    InvalidLongitude(f64),
+    #[error("Invalid longitude. Must be between -180 and 180.")]
+    InvalidLongitude,
 
-    #[error("Coordinates not within Switzerland boundaries")]
-    NotInSwitzerland { lat: f64, lon: f64 },
+    #[error("Coordinates not within Switzerland boundaries.")]
+    NotInSwitzerland,
 }
 
 impl Point {
@@ -71,16 +71,16 @@ impl Point {
 
         // Validate basic coordinate ranges
         if !(-90.0..=90.0).contains(&lat) {
-            return Err(PointError::InvalidLatitude(lat));
+            return Err(PointError::InvalidLatitude);
         }
 
         if !(-180.0..=180.0).contains(&lon) {
-            return Err(PointError::InvalidLongitude(lon));
+            return Err(PointError::InvalidLongitude);
         }
 
         // Validate Switzerland boundaries
         if !Self::is_within_switzerland(lat, lon) {
-            return Err(PointError::NotInSwitzerland { lat, lon });
+            return Err(PointError::NotInSwitzerland);
         }
 
         Ok(Self::new(lat, lon))
