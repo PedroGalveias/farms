@@ -18,13 +18,13 @@ pub enum PointError {
     #[error("Invalid coordinate format. Expected 'latitude,longitude' (e.g., '47.3769,8.5417')")]
     InvalidFormat,
 
-    #[error("Invalid latitude: {0}. Must be between -90 and 90")]
+    #[error("Invalid latitude. Must be between -90 and 90")]
     InvalidLatitude(f64),
 
-    #[error("Invalid longitude: {0}. Must be between -180 and 180")]
+    #[error("Invalid longitude. Must be between -180 and 180")]
     InvalidLongitude(f64),
 
-    #[error("Coordinates not within Switzerland boundaries. Latitude: {lat}, Longitude: {lon}")]
+    #[error("Coordinates not within Switzerland boundaries")]
     NotInSwitzerland { lat: f64, lon: f64 },
 }
 
