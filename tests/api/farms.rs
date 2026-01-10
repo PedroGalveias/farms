@@ -364,7 +364,8 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
                 "address": "Test Address",
                 "canton": "ZH",
                 "coordinates": "invalid",
-                "categories": ["Dairy"]
+                "categories": ["Dairy"],
+                "idempotency_key": Uuid::new_v4(),
             }),
             "invalid coordinate format",
         ),
@@ -374,7 +375,8 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
                 "address": "Test Address",
                 "canton": "ZH",
                 "coordinates": "47.3769",
-                "categories": ["Dairy"]
+                "categories": ["Dairy"],
+                "idempotency_key": Uuid::new_v4(),
             }),
             "single number coordinate",
         ),
@@ -384,7 +386,8 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
                 "address": "Test Address",
                 "canton": "ZH",
                 "coordinates": "abc,def",
-                "categories": ["Dairy"]
+                "categories": ["Dairy"],
+                "idempotency_key": Uuid::new_v4(),
             }),
             "non-numeric coordinates",
         ),
@@ -396,7 +399,7 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
 
         // Assert
         assert_eq!(
-            400,
+            StatusCode::BAD_REQUEST.as_u16(),
             response.status().as_u16(),
             "The API did not fail with 400 Bad Request for {}.",
             error_message
@@ -414,14 +417,15 @@ async fn create_farm_returns_400_for_coordinates_outside_switzerland() {
         "address": "Berlin Street 1",
         "canton": "ZH",
         "coordinates": "52.5200,13.4050",  // Berlin coordinates
-        "categories": ["Dairy"]
+        "categories": ["Dairy"],
+        "idempotency_key": Uuid::new_v4(),
     });
 
     // Act
     let response = app.post_farm(&body).await;
 
     // Assert
-    assert_eq!(400, response.status().as_u16());
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
@@ -434,14 +438,15 @@ async fn create_farm_returns_400_for_invalid_latitude() {
         "address": "Test Address",
         "canton": "ZH",
         "coordinates": "91.0,8.5417",  // Latitude > 90
-        "categories": ["Dairy"]
+        "categories": ["Dairy"],
+        "idempotency_key": Uuid::new_v4(),
     });
 
     // Act
     let response = app.post_farm(&body).await;
 
     // Assert
-    assert_eq!(400, response.status().as_u16());
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
@@ -454,14 +459,15 @@ async fn create_farm_returns_400_for_invalid_longitude() {
         "address": "Test Address",
         "canton": "ZH",
         "coordinates": "47.3769,181.0",  // Longitude > 180
-        "categories": ["Dairy"]
+        "categories": ["Dairy"],
+        "idempotency_key": Uuid::new_v4(),
     });
 
     // Act
     let response = app.post_farm(&body).await;
 
     // Assert
-    assert_eq!(400, response.status().as_u16());
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
@@ -480,7 +486,8 @@ async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
             "address": "Test Address",
             "canton": canton,
             "coordinates": "47.3769,8.5417",
-            "categories": ["Dairy"]
+            "categories": ["Dairy"],
+            "idempotency_key": Uuid::new_v4(),
         });
 
         // Act
@@ -488,7 +495,7 @@ async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
 
         // Assert
         assert_eq!(
-            200,
+            StatusCode::CREATED.as_u16(),
             response.status().as_u16(),
             "Failed to create farm for canton {}",
             canton
@@ -513,7 +520,7 @@ async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_
     assert_eq!(response1.status(), StatusCode::CREATED.as_u16());
     assert_eq!(response2.status(), StatusCode::CREATED.as_u16());
 
-    let saved = sqlx::query!("SELECT * FROM farms",)
+    let saved = sqlx::query!("SELECT id FROM farms",)
         .fetch_all(&app.db_pool)
         .await
         .expect("Failed to fetch saved farms.");
@@ -536,16 +543,19 @@ async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_f
     let (response1, response2) = tokio::join!(response1, response2);
 
     // Assert
-    let statuses: HashSet<u16> = vec![response1.status().as_u16(), response2.status().as_u16()]
-        .into_iter()
-        .collect();
+    let status1 = response1.status().as_u16();
+    let status2 = response2.status().as_u16();
 
-    assert_eq!(
-        statuses,
-        HashSet::from([StatusCode::CREATED.as_u16(), StatusCode::CONFLICT.as_u16()])
-    );
+    let allowed_statuses =
+        HashSet::from([StatusCode::CREATED.as_u16(), StatusCode::CONFLICT.as_u16()]);
 
-    let saved = sqlx::query!("SELECT * FROM farms",)
+    assert!(allowed_statuses.contains(&status1));
+    assert!(allowed_statuses.contains(&status2));
+
+    // At least one must be CREATED
+    assert!(status1 == StatusCode::CREATED.as_u16() || status2 == StatusCode::CREATED.as_u16());
+
+    let saved = sqlx::query!("SELECT id FROM farms")
         .fetch_all(&app.db_pool)
         .await
         .expect("Failed to fetch saved farms.");

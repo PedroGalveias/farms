@@ -1,6 +1,12 @@
 use crate::{
-    configuration::IdempotencySettings,
-    idempotency::{IdempotencyError, IdempotencyKey},
+    configuration::{IdempotencyEngine, IdempotencySettings},
+    idempotency::{
+        IdempotencyData, IdempotencyError, IdempotencyKey,
+        persistence::{
+            //postgres::PostgresPersistenceNextAction,
+            redis::RedisPersistenceNextAction,
+        },
+    },
 };
 use actix_web::HttpResponse;
 use deadpool_redis::Pool;
@@ -10,10 +16,6 @@ mod error;
 mod postgres;
 mod redis;
 
-use crate::configuration::IdempotencyEngine;
-use crate::idempotency::IdempotencyData;
-//use crate::idempotency::persistence::postgres::PostgresPersistenceNextAction;
-use crate::idempotency::persistence::redis::RedisPersistenceNextAction;
 pub use error::IdempotencyPersistenceError;
 
 pub async fn save_response(
@@ -90,7 +92,7 @@ pub async fn try_processing(
             ))
             .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
 
-            match redis::try_processing(redis_pool, &idempotency_key, &idempotency_settings)
+            match redis::try_processing(redis_pool, &idempotency_key, idempotency_settings)
                 .await
                 .map_err(|e| match e {
                     IdempotencyPersistenceError::ExpectedResponseNotFoundError => {

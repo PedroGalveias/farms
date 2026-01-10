@@ -1,5 +1,4 @@
 use crate::domain::farm::{Address, Canton, Categories, Name, Point};
-use actix_web::ResponseError;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 

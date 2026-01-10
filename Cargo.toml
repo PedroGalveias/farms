@@ -11,13 +11,6 @@ path = "src/lib.rs"
 path = "src/main.rs"
 name = "farms"
 
-[package.metadata.coverage]
-exclude-files = [
-    "src/main.rs",
-    "src/idempotency/error.rs", # Just ignoring testing of Debug implementation
-    "src/idempotency/persistence/postgres.rs" # Remove this after further development and testing
-]
-
 [dependencies]
 actix-web = "4.12"
 tokio = { version = "1.49", features = ["macros", "rt-multi-thread"] }

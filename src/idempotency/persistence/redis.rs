@@ -40,7 +40,7 @@ pub async fn try_processing(
     if result.is_some() {
         Ok(RedisPersistenceNextAction::StartProcessing)
     } else {
-        let saved_response_data = get_saved_response(pool, &idempotency_key)
+        let saved_response_data = get_saved_response(pool, idempotency_key)
             .await?
             .ok_or(IdempotencyPersistenceError::ExpectedResponseNotFoundError)?;
 

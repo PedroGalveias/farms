@@ -11,7 +11,8 @@ pub struct Canton(String);
 
 #[derive(Debug, thiserror::Error)]
 pub enum CantonError {
-    #[error("Invalid canton code: {0}. Must be a valid Swiss canton abbreviation (e.g., 'ZH', 'BE', 'LU')."
+    #[error(
+        "Invalid canton code: {0}. Must be a valid Swiss canton abbreviation (e.g., 'ZH', 'BE', 'LU')."
     )]
     InvalidCanton(String),
 

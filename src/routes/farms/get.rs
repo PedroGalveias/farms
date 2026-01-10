@@ -2,7 +2,7 @@ use crate::{
     domain::farm::{Address, Canton, Categories, Name, Point},
     routes::farms::{Farm, FarmError},
 };
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use anyhow::Context;
 use sqlx::PgPool;
 
