@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, name as \"name: Name\", address as \"address: Address\", canton as \"canton: Canton\", coordinates as \"coordinates: Point\", categories as \"categories: Categories\"\n        FROM farms\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name: Name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "address: Address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "canton: Canton",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "coordinates: Point",
+        "type_info": "Point"
+      },
+      {
+        "ordinal": 5,
+        "name": "categories: Categories",
+        "type_info": "TextArray"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b53ef9ea4394e8eba71fcd2dc410033da67ea496f3d25bbdef3fbb39faed86cb"
+}
