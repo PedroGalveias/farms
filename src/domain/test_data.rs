@@ -1,3 +1,9 @@
+//! Test helpers and test data for domain types.
+//!
+//! Provides helper functions for generating test data and constants for
+//! testing Swiss locations. Used across domain type tests to ensure
+//! consistent test data.
+
 /// Swiss canton capitals with their coordinates
 /// Format: (City Name, "latitude,longitude")
 pub const CANTON_CAPITALS: &[(&str, &str)] = &[

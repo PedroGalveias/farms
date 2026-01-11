@@ -1,3 +1,9 @@
+//! Geographic point type for Swiss farm coordinates.
+//!
+//! This module provides a validated `Point` type that ensures coordinates
+//! are within Switzerland's boundaries and properly formatted for storage
+//! in PostgreSQL's POINT datatype.
+
 use crate::impl_sqlx_for_string_domain_type;
 use std::fmt::Display;
 use thiserror::Error;
@@ -54,6 +60,7 @@ impl Address {
         Ok(Self(trimmed.to_string()))
     }
 
+    /// Returns the address as a string slice. Useful for logging and display.
     pub fn as_str(&self) -> &str {
         &self.0
     }

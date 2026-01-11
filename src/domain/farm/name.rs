@@ -1,3 +1,8 @@
+//! Farm's name type with validation.
+//!
+//! Provides a validated `Name` type that ensures farm names are non-empty,
+//! properly trimmed, and within reasonable length constraints.
+
 use crate::impl_sqlx_for_string_domain_type;
 use std::fmt::Display;
 use thiserror::Error;
@@ -47,6 +52,7 @@ impl Name {
         Ok(Self(s.trim().to_string()))
     }
 
+    /// Returns the address as a string slice. Useful for logging and display.
     pub fn as_str(&self) -> &str {
         &self.0
     }

@@ -1,3 +1,8 @@
+//! Swiss canton validation and type safety.
+//!
+//! Provides a validated `Canton` type that ensures only official Swiss canton
+//! abbreviations are accepted.
+
 use crate::impl_sqlx_for_string_domain_type;
 use std::fmt::Display;
 
@@ -36,6 +41,7 @@ impl Canton {
         }
     }
 
+    /// Returns the address as a string slice. Useful for logging and display.
     pub fn as_str(&self) -> &str {
         &self.0
     }

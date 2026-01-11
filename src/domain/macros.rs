@@ -1,3 +1,8 @@
+//! Macros for implementing common domain type patterns.
+//!
+//! Provides reusable macros for implementing sqlx traits on domain types,
+//! reducing boilerplate for database serialization and deserialization.
+
 /// Macro to implement common sqlx traits for a new type wrappers around String
 ///
 /// This macro implements Type, Encode, and Decode for types that wrap a String.
