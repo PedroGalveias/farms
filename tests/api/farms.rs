@@ -7,7 +7,6 @@ use fake::{
 use farms::domain::farm::{Address, Canton, Categories, Name, Point};
 use farms::routes::Farm;
 use rand::Rng;
-use std::collections::HashSet;
 use uuid::Uuid;
 
 /// Generate a valid Swiss coordinate within Switzerland boundaries
@@ -171,7 +170,7 @@ async fn create_farm_returns_a_200_for_valid_body_data() {
 
     let saved = sqlx::query!(
         r#"
-        SELECT id, name as "name: Name", address as "address: Address", canton "canton: Canton", coordinates as "coordinates: Point", categories
+        SELECT id, name as "name: Name", address as "address: Address", canton as "canton: Canton", coordinates as "coordinates: Point", categories as "categories: Categories"
         FROM farms
         "#
     )
@@ -183,14 +182,7 @@ async fn create_farm_returns_a_200_for_valid_body_data() {
     assert_eq!(saved.address, farm.address);
     assert_eq!(saved.canton, farm.canton);
     assert_eq!(saved.coordinates, farm.coordinates);
-    assert_eq!(
-        saved.categories.into_iter().collect::<HashSet<_>>(),
-        farm.categories
-            .as_vec()
-            .iter()
-            .map(String::from)
-            .collect::<HashSet<_>>()
-    );
+    assert_eq!(saved.categories, farm.categories);
 }
 
 #[tokio::test]
