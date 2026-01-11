@@ -35,6 +35,9 @@ impl Point {
     const MIN_LONGITUDE: f64 = 5.9;
     const MAX_LONGITUDE: f64 = 10.6;
 
+    /// Creates a new Point with the given coordinates.
+    ///
+    /// Note: This does not validate coordinates. Use `Point::parse()` for validation.
     pub fn new(latitude: f64, longitude: f64) -> Self {
         Self {
             latitude,
@@ -42,7 +45,7 @@ impl Point {
         }
     }
 
-    /// Check if coordinates are within Switzerland boundaries
+    /// Check if coordinates are within Switzerland boundaries.
     fn is_within_switzerland(lat: f64, lon: f64) -> bool {
         (Self::MIN_LATITUDE..=Self::MAX_LATITUDE).contains(&lat)
             && (Self::MIN_LONGITUDE..=Self::MAX_LONGITUDE).contains(&lon)
@@ -86,27 +89,29 @@ impl Point {
         Ok(Self::new(lat, lon))
     }
 
-    /// Convert to "latitude,longitude" string format (for API responses)
+    /// Convert to "latitude,longitude" string format (for API responses).
     pub fn to_string_format(&self) -> String {
         format!("{},{}", self.latitude, self.longitude)
     }
 
-    /// Get latitude
+    /// Returns the latitude coordinate.
     pub fn latitude(&self) -> f64 {
         self.latitude
     }
 
-    /// Get longitude
+    /// Returns the longitude coordinate.
     pub fn longitude(&self) -> f64 {
         self.longitude
     }
 
-    /// Get both coordinates as tuple (latitude, longitude)
-    pub fn parse_components(&self) -> (f64, f64) {
+    /// Returns both coordinates as a tuple (latitude, longitude).
+    pub fn as_tuple(&self) -> (f64, f64) {
         (self.latitude, self.longitude)
     }
 
-    /// Return as string (useful for logging/display)
+    /// Returns the coordinates as a formatted string.
+    ///
+    /// Equivalent to `to_string_format()`. Useful for logging and display.
     pub fn as_str(&self) -> String {
         self.to_string_format()
     }
@@ -419,7 +424,7 @@ mod tests {
     fn parse_components_returns_tuple() {
         let (lat, lon) = random_swiss_coordinates();
         let point = Point::new(lat, lon);
-        let (parsed_lat, parsed_lon) = point.parse_components();
+        let (parsed_lat, parsed_lon) = point.as_tuple();
         assert_eq!(parsed_lat, lat);
         assert_eq!(parsed_lon, lon);
     }
