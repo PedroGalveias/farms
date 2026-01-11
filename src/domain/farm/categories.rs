@@ -1,8 +1,13 @@
+//!
+//! Provides a validated `Categories` type that manages farm classification
+//! categories. Ensures categories are non-empty, deduplicated (case-insensitive),
+//! and within reasonable limits.
+
 use crate::impl_sqlx_for_vec_string_domain_type;
 use std::collections::HashSet;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Categories(Vec<String>);
 
 #[derive(Debug, Error)]
@@ -73,7 +78,7 @@ impl Categories {
 
             let lowercase = trimmed.to_lowercase();
 
-            // Tries to insert. If category already exists, returns false and if condition returns an Error
+            // Tries to insert. If the category already exists, it returns false, otherwise, it returns an Error.
             if !(already_seen_lowercase).insert(lowercase) {
                 return Err(CategoriesError::DuplicateCategory(trimmed));
             }
@@ -84,31 +89,51 @@ impl Categories {
         Ok(Self(validated))
     }
 
+    /// Returns a reference to the categories as a slice.
     pub fn as_slice(&self) -> &[String] {
         &self.0
     }
 
+    /// Returns a reference to the underlying vector of categories.
     pub fn as_vec(&self) -> &Vec<String> {
         &self.0
     }
 
+    /// Consumes the `Categories` and returns the underlying vector. Useful for APIs that return a vector of categories.
     pub fn into_inner(self) -> Vec<String> {
         self.0
     }
 
+    /// Returns the number of categories.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if there are no categories.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Checks if a category exists in the list (case-insensitive).
     pub fn contains(&self, category: &str) -> bool {
         let lowercased = category.to_lowercase();
         self.0.iter().any(|c| c.to_lowercase() == lowercased)
     }
 }
+
+impl PartialEq for Categories {
+    fn eq(&self, other: &Self) -> bool {
+        if self.0.len() != other.0.len() {
+            return false;
+        }
+
+        let self_set: HashSet<&String> = self.0.iter().collect();
+        let other_set: HashSet<&String> = other.0.iter().collect();
+
+        self_set == other_set
+    }
+}
+impl Eq for Categories {}
 
 impl AsRef<Vec<String>> for Categories {
     fn as_ref(&self) -> &Vec<String> {
@@ -143,6 +168,7 @@ impl<'de> serde::Deserialize<'de> for Categories {
     }
 }
 
+// Implement sqlx traits (Type, Encode, Decode) for PostgreSQL TEXT[] array support.
 impl_sqlx_for_vec_string_domain_type!(Categories);
 
 #[cfg(test)]
@@ -430,5 +456,11 @@ mod tests {
         assert_eq!(categories.as_slice()[0], "DaIrY");
         assert_eq!(categories.as_slice()[1], "EGG");
         assert_eq!(categories.as_slice()[2], "vegetables");
+    }
+    #[test]
+    fn categories_equal_regardless_of_order() {
+        let cat1 = Categories::parse(vec!["A".to_string(), "B".to_string()]).unwrap();
+        let cat2 = Categories::parse(vec!["B".to_string(), "A".to_string()]).unwrap();
+        assert_eq!(cat1, cat2);
     }
 }
