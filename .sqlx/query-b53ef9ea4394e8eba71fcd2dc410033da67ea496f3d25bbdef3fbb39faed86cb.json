@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM farms",
+  "query": "\n        SELECT id, name as \"name: Name\", address as \"address: Address\", canton as \"canton: Canton\", coordinates as \"coordinates: Point\", categories as \"categories: Categories\"\n        FROM farms\n        ",
   "describe": {
     "columns": [
       {
@@ -10,38 +10,28 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "name: Name",
         "type_info": "Text"
       },
       {
         "ordinal": 2,
-        "name": "address",
+        "name": "address: Address",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "canton",
+        "name": "canton: Canton",
         "type_info": "Text"
       },
       {
         "ordinal": 4,
-        "name": "coordinates",
-        "type_info": "Text"
+        "name": "coordinates: Point",
+        "type_info": "Point"
       },
       {
         "ordinal": 5,
-        "name": "categories",
+        "name": "categories: Categories",
         "type_info": "TextArray"
-      },
-      {
-        "ordinal": 6,
-        "name": "created_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 7,
-        "name": "updated_at",
-        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -53,10 +43,8 @@
       false,
       false,
       false,
-      false,
-      false,
-      true
+      false
     ]
   },
-  "hash": "c47f1c5ed57e909f13d63c2759ef63ad6ef912a347252e22dbc583de3262cb43"
+  "hash": "b53ef9ea4394e8eba71fcd2dc410033da67ea496f3d25bbdef3fbb39faed86cb"
 }

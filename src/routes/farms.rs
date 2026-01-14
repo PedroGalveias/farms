@@ -1,3 +1,4 @@
+use crate::domain::farm::{Address, Canton, Categories, Name, Point};
 use crate::errors::error_chain_fmt;
 use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
 use anyhow::Context;
@@ -18,11 +19,11 @@ pub struct FormData {
 #[derive(serde::Deserialize, serde::Serialize, sqlx::FromRow)]
 pub struct Farm {
     pub id: Uuid,
-    pub name: String,
-    pub address: String,
-    pub canton: String,
-    pub coordinates: String,
-    pub categories: Vec<String>,
+    pub name: Name,
+    pub address: Address,
+    pub canton: Canton,
+    pub coordinates: Point,
+    pub categories: Categories,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -33,15 +34,37 @@ pub async fn create(
     body: web::Json<FormData>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, FarmError> {
+    // Validate farm's name
+    let name =
+        Name::parse(body.name.clone()).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
+    let address = Address::parse(body.address.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
+    // Validate farm's canton
+    let canton = Canton::parse(body.canton.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
+    // Validate farm's coordinates
+    let coordinates =
+        Point::parse(&body.coordinates).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
+    // Validate farm's categories
+    let categories = Categories::parse(body.categories.clone())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+
     // Record form fields in the tracing span
     let span = tracing::Span::current();
-    span.record("create_name", body.name.as_str());
-    span.record("create_address", body.address.as_str());
-    span.record("create_canton", body.canton.as_str());
-    span.record("create_coordinates", body.coordinates.as_str());
-    span.record("create_categories", tracing::field::debug(&body.categories));
+    span.record("create_name", name.as_str());
+    span.record("create_address", address.as_str());
+    span.record("create_canton", canton.as_str());
+    span.record("create_coordinates", coordinates.as_str());
+    span.record(
+        "create_categories",
+        tracing::field::debug(&categories.as_vec()),
+    );
 
-    insert_farm(&pool, &body).await?;
+    insert_farm(&pool, name, address, canton, coordinates, categories).await?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -76,8 +99,15 @@ impl std::fmt::Debug for FarmError {
     }
 }
 
-#[tracing::instrument(name = "Saving new farm details in the database", skip(form, pool))]
-pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), FarmError> {
+#[tracing::instrument(name = "Saving new farm details in the database", skip(pool))]
+pub async fn insert_farm(
+    pool: &PgPool,
+    name: Name,
+    address: Address,
+    canton: Canton,
+    coordinates: Point,
+    categories: Categories,
+) -> Result<(), FarmError> {
     sqlx::query!(
         r#"
             INSERT INTO farms (
@@ -85,11 +115,11 @@ pub async fn insert_farm(pool: &PgPool, form: &FormData) -> Result<(), FarmError
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         "#,
         Uuid::new_v4(),
-        form.name,
-        form.address,
-        form.canton,
-        form.coordinates,
-        &form.categories,
+        &name as &Name,
+        &address as &Address,
+        &canton as &Canton,
+        &coordinates as &Point,
+        &categories as &Categories,
         Utc::now(),
         Option::<DateTime<Utc>>::None
     )
@@ -107,11 +137,11 @@ pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, FarmError> {
         r#"
         SELECT
             id,
-            name,
-            address,
-            canton,
-            coordinates,
-            categories as "categories: Vec<String>",
+            name as "name: Name",
+            address as "address: Address",
+            canton as "canton: Canton",
+            coordinates as "coordinates: Point",
+            categories as "categories: Categories",
             created_at,
             updated_at
         FROM farms
