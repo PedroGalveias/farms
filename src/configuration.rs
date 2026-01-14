@@ -43,13 +43,18 @@ pub struct RedisSettings {
 #[derive(serde::Deserialize, Clone)]
 pub struct IdempotencySettings {
     pub engine: IdempotencyEngine,
-    pub redis: Option<RedisIdempotencySettings>,
+    #[serde(default = "default_idempotency_settings_ttl_seconds")]
+    pub ttl_seconds: u64,
+    #[serde(default = "default_idempotency_settings_redis_key_prefix")]
+    pub redis_key_prefix: String,
 }
 
-#[derive(serde::Deserialize, Clone)]
-pub struct RedisIdempotencySettings {
-    pub key_prefix: String,
-    pub ttl_seconds: u64,
+fn default_idempotency_settings_ttl_seconds() -> u64 {
+    600 // 10 min
+}
+
+fn default_idempotency_settings_redis_key_prefix() -> String {
+    "idem".to_string()
 }
 
 /// The runtime environment for our application.
@@ -106,7 +111,8 @@ impl TryFrom<String> for IdempotencyEngine {
             "postgres" => Ok(Self::Postgres),
             other => Err(format!(
                 "'{}' is not a supported Idempotency engine.\
-                Use 'redis', 'postgres' or 'none' to disable Idempotency",
+                Use 'redis', 'postgres' or 'none' to disable Idempotency\
+                Warning: postgres engine is currently untested",
                 other
             )),
         }

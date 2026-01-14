@@ -1,10 +1,10 @@
 use deadpool_redis::{
-    redis::{AsyncTypedCommands, RedisError},
     Pool,
+    redis::{AsyncTypedCommands, RedisError},
 };
 use farms::{
-    configuration::{get_configuration, DatabaseSettings, Settings},
-    startup::{get_connection_pool, get_redis_connection_pool, Application},
+    configuration::{DatabaseSettings, Settings, get_configuration},
+    startup::{Application, get_connection_pool, get_redis_connection_pool},
     telemetry::{get_subscriber, init_subscriber},
 };
 use once_cell::sync::Lazy;

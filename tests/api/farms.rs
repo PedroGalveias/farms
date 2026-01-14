@@ -1,15 +1,14 @@
-use crate::helpers::{redis_exists_with_retry, spawn_app, TestApp};
+use crate::helpers::{TestApp, redis_exists_with_retry, spawn_app};
 use actix_web::http::StatusCode;
 use chrono::Utc;
 use deadpool_redis::redis::AsyncCommands;
 use fake::{
-    faker::{address::de_de::StreetName, name::de_de::Name as FakerName},
     Fake,
+    faker::{address::de_de::StreetName, name::de_de::Name as FakerName},
 };
-use farms::idempotency::{IdempotencyKey, RedisIdempotency};
 use farms::{
     domain::farm::{Address, Canton, Categories, Name, Point},
-    idempotency::HeaderPair,
+    idempotency::{HeaderPair, IdempotencyData, IdempotencyKey},
     routes::farms::Farm,
 };
 use rand::Rng;
@@ -569,15 +568,9 @@ async fn create_farm_creates_redis_key_with_response() {
     // Assert
     assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
 
-    let redis_settings = app
-        .configuration
-        .idempotency
-        .redis
-        .expect("Expected redis settings to be set.");
-
     let idempotency_key = IdempotencyKey::try_from(format!(
         "{}:{}",
-        redis_settings.key_prefix,
+        app.configuration.idempotency.redis_key_prefix,
         idempotency_key.to_string()
     ))
     .expect("Failed to parse idempotency key");
@@ -597,13 +590,10 @@ async fn create_farm_creates_redis_key_with_response() {
         .await
         .expect("Failed to retrieve idempotency saved response");
 
-    let data: RedisIdempotency =
+    let data: IdempotencyData =
         rmp_serde::from_slice(&bytes).expect("Failed to deserialize idempotency");
 
-    assert_eq!(
-        response.status().as_u16(),
-        data.response_status_code.unwrap()
-    );
+    assert_eq!(response.status().as_u16(), data.response_status_code);
 
     let response_headers = {
         let mut h = Vec::with_capacity(response.headers().len());
@@ -615,10 +605,11 @@ async fn create_farm_creates_redis_key_with_response() {
         h
     };
 
-    assert!(data
-        .response_headers
-        .iter()
-        .all(|h| response_headers.contains(h)));
+    assert!(
+        data.response_headers
+            .iter()
+            .all(|h| response_headers.contains(h))
+    );
 
     assert_eq!(data.response_body, response.bytes().await.unwrap().to_vec());
 }

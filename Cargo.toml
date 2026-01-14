@@ -1,8 +1,8 @@
 [package]
 name = "farms"
-version = "0.1.0"
-authors = ["Pedro Galveias <pedro.r.galveias@pm.me>"]
-edition = "2021"
+version = "0.3.0"
+authors = ["Pedro Galveias <pedro.r.galveias@pm.me>", "Pedro Moleiro <pedro.r.p.moleiro@outlook.com>"]
+edition = "2024"
 
 [lib]
 path = "src/lib.rs"
@@ -10,6 +10,13 @@ path = "src/lib.rs"
 [[bin]]
 path = "src/main.rs"
 name = "farms"
+
+[package.metadata.coverage]
+exclude-files = [
+    "src/main.rs",
+    "src/idempotency/error.rs", # Just ignoring testing of Debug implementation
+    "src/idempotency/persistence/postgres.rs" # Remove this after further development and testing
+]
 
 [dependencies]
 actix-web = "4.12"
@@ -60,5 +67,5 @@ features = [
 [dev-dependencies]
 once_cell = "1"
 fake = "4.4"
-claims = "0.8.0"
+claims = "0.8"
 reqwest = { version = "0.12", features = ["json"] }

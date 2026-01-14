@@ -1,14 +1,14 @@
 use crate::{
     configuration::Settings,
     domain::farm::{Address, Canton, Categories, Name, Point},
-    idempotency::{save_response, try_processing, IdempotencyError, IdempotencyNextAction},
+    idempotency::{IdempotencyError, IdempotencyNextAction, save_response, try_processing},
     routes::farms::FarmError,
 };
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use deadpool_redis::Pool;
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -63,8 +63,9 @@ pub async fn create(
     );
     span.record("idempotency_key", body.idempotency_key.as_str());
 
-    if let IdempotencyNextAction::ReturnSavedResponse(saved_response) = try_processing(
+    let mut transaction = match try_processing(
         &redis_pool,
+        &pool,
         body.idempotency_key.as_str(),
         &configuration.idempotency,
     )
@@ -73,14 +74,26 @@ pub async fn create(
         IdempotencyError::ExpectedResponseNotFoundError => FarmError::DuplicateRequestConflict(e),
         _ => FarmError::UnexpectedError(e.into()),
     })? {
-        return Ok(saved_response);
-    }
+        IdempotencyNextAction::ReturnSavedResponse(saved_response) => {
+            return Ok(saved_response);
+        }
+        IdempotencyNextAction::StartProcessing(transaction) => transaction,
+    };
 
-    insert_farm(&pool, name, address, canton, coordinates, categories).await?;
+    insert_farm(
+        &mut transaction,
+        name,
+        address,
+        canton,
+        coordinates,
+        categories,
+    )
+    .await?;
 
     let response = HttpResponse::Created().finish();
-    let response = save_response(
+    let (response, transaction) = save_response(
         &redis_pool,
+        transaction,
         body.idempotency_key.as_str(),
         &configuration.idempotency,
         response,
@@ -88,19 +101,24 @@ pub async fn create(
     .await
     .map_err(|e| FarmError::UnexpectedError(e.into()))?;
 
+    transaction
+        .commit()
+        .await
+        .map_err(|e| FarmError::UnexpectedError(e.into()))?;
+
     Ok(response)
 }
 
-#[tracing::instrument(name = "Saving new farm details in the database", skip(pool))]
+#[tracing::instrument(name = "Saving new farm details in the database", skip(transaction))]
 pub async fn insert_farm(
-    pool: &PgPool,
+    transaction: &mut Transaction<'_, Postgres>,
     name: Name,
     address: Address,
     canton: Canton,
     coordinates: Point,
     categories: Categories,
 ) -> Result<(), FarmError> {
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"
             INSERT INTO farms (
                  id, name, address, canton, coordinates, categories, created_at, updated_at
@@ -114,10 +132,11 @@ pub async fn insert_farm(
         &categories as &Categories,
         Utc::now(),
         Option::<DateTime<Utc>>::None
-    )
-    .execute(pool)
-    .await
-    .context("Failed to insert new farm in the database.")?;
+    );
+    transaction
+        .execute(query)
+        .await
+        .context("Failed to insert new farm in the database.")?;
 
     Ok(())
 }

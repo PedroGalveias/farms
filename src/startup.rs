@@ -1,9 +1,9 @@
 use crate::configuration::{DatabaseSettings, RedisSettings, Settings};
 use crate::routes::{farms, health_check};
-use actix_web::{dev::Server, web, web::Data, App, HttpServer};
+use actix_web::{App, HttpServer, dev::Server, web, web::Data};
 use deadpool_redis::{Config, Pool, Runtime};
 use secrecy::ExposeSecret;
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
 
