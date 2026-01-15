@@ -18,46 +18,60 @@ A Rust web service for managing farm data in Switzerland, built with Actix Web a
 - **Database**: PostgreSQL with SQLx 0.8 (compile-time verified queries)
 - **Async Runtime**: Tokio with multi-threading
 - **Logging**: tracing, tracing-subscriber, tracing-actix-web
-- **Serialization**: serde, serde_json
+- **Serialization**: serde, serde_json, rmp-serde
 
 ### Project Structure
 
 ```
 farms/
 ├── src/
-│   ├── main.rs               # Application entry point
-│   ├── lib.rs                # Module exports
-│   ├── startup.rs            # Server configuration and HTTP setup
-│   ├── configuration.rs      # Settings and database connection
-│   ├── telemetry.rs          # Logging configuration
-│   ├── errors.rs             # Error utilities
-│   ├── domain/               # Domain layer (business logic & validation)
-│   │   ├── mod.rs            # Domain module exports (farm, macros, test_data)
-│   │   ├── macros.rs         # Shared macros for sqlx trait implementations
-│   │   ├── test_data.rs      # Shared test data constants (reusable)
-│   │   └── farm/             # Farm entity domain logic
-│   │       ├── mod.rs        # Farm domain exports (Address, Canton, etc.)
-│   │       ├── address.rs    # Validated address type
-│   │       ├── canton.rs     # Validated Swiss canton type
-│   │       ├── categories.rs # Validated categories type
-│   │       ├── name.rs       # Validated farm name type
-│   │       └── point.rs      # Validated coordinates type
-│   └── routes/
-│       ├── mod.rs            # Routes module exports
-│       ├── health_check.rs   # Health check endpoint
-│       └── farms.rs          # Farm CRUD operations
-├── migrations/               # Database migrations
-├── configuration/            # Environment configs (base, local, production)
-├── api_docs/                 # Bruno API collection
-├── scripts/                  # Database setup scripts
-└── tests/                    # Integration tests
-    └── api/                  # API integration tests
+│   ├── main.rs                 # Application entry point
+│   ├── lib.rs                  # Module exports
+│   ├── startup.rs              # Server configuration and HTTP setup
+│   ├── configuration.rs        # Settings and database connection
+│   ├── telemetry.rs            # Logging configuration
+│   ├── errors.rs               # Error utilities
+│   ├── domain/                 # Domain layer (business logic & validation)
+│   │   ├── mod.rs              # Domain module exports (farm, macros, test_data)
+│   │   ├── macros.rs           # Shared macros for sqlx trait implementations
+│   │   ├── test_data.rs        # Shared test data constants (reusable)
+│   │   └── farm/               # Farm entity domain logic
+│   │       ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
+│   │       ├── address.rs      # Validated address type
+│   │       ├── canton.rs       # Validated Swiss canton type
+│   │       ├── categories.rs   # Validated categories type
+│   │       ├── name.rs         # Validated farm name type
+│   │       └── point.rs        # Validated coordinates type
+│   |── routes/
+│   |   ├── health_check.rs     # Health check endpoint
+|   |   └── farms/
+|   |       |-- mod.rs          # Farms module export and Farm struct
+|   |       |-- error.rs        # Farms errors
+│   |       |-- get.rs          # Farm get operations
+|   |       └── post.rs         # Farm post operations
+|   └── idempotency/
+|       |-- mod.rs              # Idempotency module export
+|       |-- key.rs              # Idempotency Key struct and validation
+|       |-- idempotency_data.rs # Idempotency data stored
+|       |-- error.rs            # Idempotency errors
+|       └── persistence/
+|           |-- mod.rs          # Persistence of idempotency details module export
+|           |-- error.rs        # Idempotency persistence errors
+|           |-- redis.rs        # Idempotency persistence in Redis
+|           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
+├── migrations/                 # Database migrations
+├── configuration/              # Environment configs (base, local, production)
+├── api_docs/                   # Bruno API collection
+├── scripts/                    # Database setup scripts
+└── tests/                      # Integration tests
+    └── api/                    # API integration tests
 ```
 
 ## Prerequisites
 
-- Rust 1.x (edition 2021)
+- Rust 1.x (edition 2024)
 - PostgreSQL
+- Valkey
 - SQLx CLI: `cargo install sqlx-cli --no-default-features --features postgres`
 - Docker (optional, for database setup)
 
@@ -143,6 +157,9 @@ sqlx migrate run
 # Revert last migration
 sqlx migrate revert
 
+# Prepare queries
+cargo sqlx prepare --workspace --all -- --all-targets
+ 
 # Reset database
 SKIP_DOCKER=true ./scripts/init_db.sh
 ```
@@ -173,6 +190,7 @@ into Bruno to explore and test the API endpoints.
 - `APP_ENVIRONMENT` - Environment name (local/production)
 - `DATABASE_URL` - PostgreSQL connection string (for SQLx CLI)
 - `RUST_LOG` - Logging level (trace/debug/info/warn/error)
+- `TEST_LOG` - Enable logging of API during test execution
 
 ## License
 

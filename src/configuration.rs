@@ -1,4 +1,5 @@
 use secrecy::{ExposeSecret, SecretString};
+use serde::Deserializer;
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
@@ -6,7 +7,8 @@ use sqlx::postgres::{PgConnectOptions, PgSslMode};
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
-    pub redis_uri: SecretString,
+    pub redis: RedisSettings,
+    pub idempotency: IdempotencySettings,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -26,6 +28,33 @@ pub struct DatabaseSettings {
     pub host: String,
     pub database_name: String,
     pub require_ssl: bool,
+    pub max_connections: Option<u32>,
+    pub timeout_seconds: Option<u64>,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct RedisSettings {
+    pub uri: SecretString,
+    pub pool_max_size: Option<usize>,
+    pub timeout_seconds: Option<u64>,
+    pub session_key_prefix: String,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct IdempotencySettings {
+    pub engine: IdempotencyEngine,
+    #[serde(default = "default_idempotency_settings_ttl_seconds")]
+    pub ttl_seconds: u64,
+    #[serde(default = "default_idempotency_settings_redis_key_prefix")]
+    pub redis_key_prefix: String,
+}
+
+fn default_idempotency_settings_ttl_seconds() -> u64 {
+    600 // 10 min
+}
+
+fn default_idempotency_settings_redis_key_prefix() -> String {
+    "idem".to_string()
 }
 
 /// The runtime environment for our application.
@@ -33,29 +62,69 @@ pub enum Environment {
     Local,
     Production,
 }
-
 impl Environment {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Environment::Local => "local",
-            Environment::Production => "production",
+            Self::Local => "local",
+            Self::Production => "production",
         }
     }
 }
-
 impl TryFrom<String> for Environment {
     type Error = String;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         match s.to_lowercase().as_str() {
-            "local" => Ok(Environment::Local),
-            "production" => Ok(Environment::Production),
+            "local" => Ok(Self::Local),
+            "production" => Ok(Self::Production),
             other => Err(format!(
                 "{} is not supported environment.\
                 Use either `local` or `production`.",
                 other
             )),
         }
+    }
+}
+
+#[derive(Clone)]
+pub enum IdempotencyEngine {
+    None,
+    Redis,
+    Postgres,
+}
+impl IdempotencyEngine {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Redis => "redis",
+            Self::Postgres => "postgres",
+        }
+    }
+}
+impl TryFrom<String> for IdempotencyEngine {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(Self::None),
+            "redis" => Ok(Self::Redis),
+            "postgres" => Ok(Self::Postgres),
+            other => Err(format!(
+                "'{}' is not a supported Idempotency engine.\
+                Use 'redis', 'postgres' or 'none' to disable Idempotency\
+                Warning: postgres engine is currently untested",
+                other
+            )),
+        }
+    }
+}
+impl<'de> serde::Deserialize<'de> for IdempotencyEngine {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        IdempotencyEngine::try_from(s).map_err(serde::de::Error::custom)
     }
 }
 
