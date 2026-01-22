@@ -127,7 +127,11 @@ impl std::fmt::Display for Point {
 // SQLx Type implementation for PostgreSQL POINT
 impl Type<Postgres> for Point {
     fn type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("point")
+        <PgPoint as Type<Postgres>>::type_info()
+    }
+
+    fn compatible(ty: &PgTypeInfo) -> bool {
+        <PgPoint as Type<Postgres>>::compatible(ty)
     }
 }
 
