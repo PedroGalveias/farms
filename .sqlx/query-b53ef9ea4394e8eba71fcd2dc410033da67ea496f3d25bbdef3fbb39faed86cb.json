@@ -26,7 +26,7 @@
       {
         "ordinal": 4,
         "name": "coordinates: Point",
-        "type_info": "Text"
+        "type_info": "Point"
       },
       {
         "ordinal": 5,
