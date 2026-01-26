@@ -9,7 +9,7 @@
         "Text",
         "Text",
         "Text",
-        "Text",
+        "Point",
         "TextArray",
         "Timestamptz",
         "Timestamptz"

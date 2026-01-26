@@ -1,6 +1,6 @@
 use sqlx::encode::IsNull;
 use sqlx::postgres::types::PgPoint;
-use sqlx::postgres::{PgArgumentBuffer, PgTypeInfo, PgValueRef};
+use sqlx::postgres::{PgArgumentBuffer, PgTypeInfo, PgValueFormat, PgValueRef};
 use sqlx::{Decode, Encode, Postgres, Type};
 use thiserror::Error;
 
@@ -127,7 +127,11 @@ impl std::fmt::Display for Point {
 // SQLx Type implementation for PostgreSQL POINT
 impl Type<Postgres> for Point {
     fn type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("point")
+        <PgPoint as Type<Postgres>>::type_info()
+    }
+
+    fn compatible(ty: &PgTypeInfo) -> bool {
+        <PgPoint as Type<Postgres>>::compatible(ty)
     }
 }
 
@@ -161,11 +165,54 @@ impl Encode<'_, Postgres> for Point {
     }
 }
 
-// Decode Point from PostgreSQL
 impl<'r> Decode<'r, Postgres> for Point {
     fn decode(value: PgValueRef<'r>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let pg_point = <PgPoint as Decode<Postgres>>::decode(value)?;
-        Ok(pg_point.into())
+        match value.format() {
+            PgValueFormat::Binary => {
+                // If Binary, delegate to PgPoint's SQLx implementation
+                let pg_point = <PgPoint as Decode<Postgres>>::decode(value)?;
+                Ok(Point {
+                    longitude: pg_point.x,
+                    latitude: pg_point.y,
+                })
+            }
+            PgValueFormat::Text => {
+                // If Text, parse "(longitude,latitude)" format
+                let text = value.as_str()?;
+
+                // Remove parentheses
+                let inner = text
+                    .strip_prefix('(')
+                    .and_then(|s| s.strip_suffix(')'))
+                    .ok_or_else(|| {
+                        format!(
+                            "Invalid POINT text format: expected '(x,y)', got '{}'",
+                            text
+                        )
+                    })?;
+
+                // Split
+                let (x_str, y_str) = inner.split_once(',').ok_or_else(|| {
+                    format!("Invalid POINT text format: missing comma in '{}'", text)
+                })?;
+
+                // Parse coordinates
+                let longitude = x_str
+                    .trim()
+                    .parse::<f64>()
+                    .map_err(|e| format!("Failed to parse longitude '{}': {}", x_str.trim(), e))?;
+
+                let latitude = y_str
+                    .trim()
+                    .parse::<f64>()
+                    .map_err(|e| format!("Failed to parse latitude '{}': {}", y_str.trim(), e))?;
+
+                Ok(Point {
+                    longitude,
+                    latitude,
+                })
+            }
+        }
     }
 }
 
