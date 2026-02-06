@@ -31,6 +31,9 @@ farms/
 │   ├── configuration.rs        # Settings and database connection
 │   ├── telemetry.rs            # Logging configuration
 │   ├── errors.rs               # Error utilities
+│   ├── authentication/         # Authentication layer (password hashing, future: sessions)
+│   │   ├── mod.rs              # Authentication module exports
+│   │   └── password.rs         # Password hashing and verification logic
 │   ├── domain/                 # Domain layer (business logic & validation)
 │   │   ├── mod.rs              # Domain module exports (farm, macros, test_data)
 │   │   ├── macros.rs           # Shared macros for sqlx trait implementations
@@ -42,23 +45,23 @@ farms/
 │   │       ├── categories.rs   # Validated categories type
 │   │       ├── name.rs         # Validated farm name type
 │   │       └── point.rs        # Validated coordinates type
-│   |── routes/
-│   |   ├── health_check.rs     # Health check endpoint
-|   |   └── farms/
-|   |       |-- mod.rs          # Farms module export and Farm struct
-|   |       |-- error.rs        # Farms errors
-│   |       |-- get.rs          # Farm get operations
-|   |       └── post.rs         # Farm post operations
-|   └── idempotency/
-|       |-- mod.rs              # Idempotency module export
-|       |-- key.rs              # Idempotency Key struct and validation
-|       |-- idempotency_data.rs # Idempotency data stored
-|       |-- error.rs            # Idempotency errors
-|       └── persistence/
-|           |-- mod.rs          # Persistence of idempotency details module export
-|           |-- error.rs        # Idempotency persistence errors
-|           |-- redis.rs        # Idempotency persistence in Redis
-|           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
+│   ├── routes/
+│   │   ├── health_check.rs     # Health check endpoint
+│   │   └── farms/
+│   │       ├── mod.rs          # Farms module export and Farm struct
+│   │       ├── error.rs        # Farms errors
+│   │       ├── get.rs          # Farm get operations
+│   │       └── post.rs         # Farm post operations
+│   └── idempotency/
+│       ├── mod.rs              # Idempotency module export
+│       ├── key.rs              # Idempotency Key struct and validation
+│       ├── idempotency_data.rs # Idempotency data stored
+│       ├── error.rs            # Idempotency errors
+│       └── persistence/
+│           ├── mod.rs          # Persistence of idempotency details module export
+│           ├── error.rs        # Idempotency persistence errors
+│           ├── redis.rs        # Idempotency persistence in Redis
+│           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
 ├── migrations/                 # Database migrations
 ├── configuration/              # Environment configs (base, local, production)
 ├── api_docs/                   # Bruno API collection
