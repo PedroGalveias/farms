@@ -9,6 +9,8 @@ pub struct Settings {
     pub application: ApplicationSettings,
     pub redis: RedisSettings,
     pub idempotency: IdempotencySettings,
+    pub logging: LoggingSettings,
+    pub telemetry: TelemetrySettings,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -47,6 +49,20 @@ pub struct IdempotencySettings {
     pub ttl_seconds: u64,
     #[serde(default = "default_idempotency_settings_redis_key_prefix")]
     pub redis_key_prefix: String,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct LoggingSettings {
+    pub level: LoggingLevel,
+    pub format: LogFormat,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct TelemetrySettings {
+    pub enabled: bool,
+    pub service_name: String,
+    pub endpoint: String,
+    pub environment: String,
 }
 
 fn default_idempotency_settings_ttl_seconds() -> u64 {
@@ -146,6 +162,91 @@ impl DatabaseSettings {
 
     pub fn with_db(&self) -> PgConnectOptions {
         self.without_db().database(&self.database_name)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum LoggingLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+impl LoggingLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Trace => "trace",
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Warn => "warn",
+            Self::Error => "error",
+        }
+    }
+}
+impl TryFrom<String> for LoggingLevel {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, <LoggingLevel as TryFrom<String>>::Error> {
+        match s.to_lowercase().as_str() {
+            "trace" => Ok(Self::Trace),
+            "debug" => Ok(Self::Debug),
+            "info" => Ok(Self::Info),
+            "warn" => Ok(Self::Warn),
+            "error" => Ok(Self::Error),
+            other => Err(format!(
+                "'{}' is not a supported Logging level.\
+                Use 'trace', 'debug', 'info', 'warn', 'error'",
+                other
+            )),
+        }
+    }
+}
+impl<'de> serde::Deserialize<'de> for LoggingLevel {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        LoggingLevel::try_from(s).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum LogFormat {
+    Pretty,
+    Bunyan,
+}
+impl LogFormat {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pretty => "pretty",
+            Self::Bunyan => "bunyan",
+        }
+    }
+}
+impl TryFrom<String> for LogFormat {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "pretty" => Ok(Self::Pretty),
+            "bunyan" => Ok(Self::Bunyan),
+            other => Err(format!(
+                "'{}' is not a supported Log format.\
+                Use 'pretty' or 'bunyan'",
+                other
+            )),
+        }
+    }
+}
+impl<'de> serde::Deserialize<'de> for LogFormat {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        LogFormat::try_from(s).map_err(serde::de::Error::custom)
     }
 }
 

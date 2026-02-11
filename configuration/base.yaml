@@ -1,20 +1,36 @@
 application:
+  host: 127.0.0.1
+  base_url: "http://127.0.0.1"
   port: 8000
 database:
   max_connections: 100 # default
   timeout_seconds: 5
   port: 5432
   database_name: "farms"
+  require_ssl: false
+  username: "postgres"
+  password: "password"
+  host: "127.0.0.1"
 idempotency:
   engine: "redis"
   ttl_seconds: 600 # 10 min
   redis_key_prefix: "idem"
 redis:
+  uri: "redis://127.0.0.1:6379"
   pool_max_size: 20
   timeout_seconds: 5
   session_key_prefix: "sess"
-email_client:
-  base_url: "localhost"
-  sender_email: "test@farms.com"
-  authorization_token: ""
-  timeout_milliseconds: 10000
+logging:
+  level: "info"
+  format: "bunyan" # Options: pretty, bunyan
+telemetry:
+  enabled: false
+  service_name: "farms-service"
+  endpoint: "http://localhost:4317" #OTLP gRPC endpoint
+  environment: "local"
+
+#email_client:
+#  base_url: "localhost"
+#  sender_email: "test@farms.com"
+#  authorization_token: ""
+#  timeout_milliseconds: 10000

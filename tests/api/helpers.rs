@@ -3,9 +3,12 @@ use deadpool_redis::{
     redis::{AsyncTypedCommands, RedisError},
 };
 use farms::{
-    configuration::{DatabaseSettings, Settings, get_configuration},
+    configuration::{
+        DatabaseSettings, LogFormat, LoggingLevel, LoggingSettings, Settings, TelemetrySettings,
+        get_configuration,
+    },
     startup::{Application, get_connection_pool, get_redis_connection_pool},
-    telemetry::{get_subscriber, init_subscriber},
+    telemetry::init_telemetry,
 };
 use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -15,18 +18,25 @@ use uuid::Uuid;
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
-    let default_filter_level = "info".to_string();
-    let subscriber_name = "test".to_string();
+    let logging = LoggingSettings {
+        level: LoggingLevel::Debug,
+        format: LogFormat::Pretty,
+    };
+    let telemetry = TelemetrySettings {
+        enabled: false,
+        service_name: "farms-tests".to_string(),
+        endpoint: "".to_string(),
+        environment: "test".to_string(),
+    };
+
     // We cannot assign the output of `get_subscriber` to a variable based on the
     // value TEST_LOG` because the sink is part of the type returned by
     // `get_subscriber`, therefore they are not the same type. We could work around
     // it, but this is the most straight-forward way of moving forward.
     if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
-        init_subscriber(subscriber);
+        init_telemetry(logging, telemetry, std::io::stdout).expect("Failed to init logging");
     } else {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
-        init_subscriber(subscriber);
+        init_telemetry(logging, telemetry, std::io::sink).expect("Failed to init logging");
     };
 });
 
