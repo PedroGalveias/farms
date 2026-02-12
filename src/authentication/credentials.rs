@@ -1,7 +1,7 @@
 use crate::authentication::password::{compute_password_hash, verify_password_hash};
 use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ pub async fn change_password(
     pool: &PgPool,
 ) -> Result<(), anyhow::Error> {
     let password_hash = spawn_blocking_with_tracing(move || compute_password_hash(password))
-        .await
+        .await?
         .context("Failed to hash password.")?;
 
     sqlx::query!(
@@ -39,7 +39,7 @@ pub async fn change_password(
         SET password_hash = $1
         WHERE id = $2
         "#,
-        password_hash,
+        password_hash.expose_secret(),
         id,
     )
     .execute(pool)
