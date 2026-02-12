@@ -2,7 +2,6 @@ logging:
   level: "debug"
   format: "pretty"
 telemetry:
-  #enabled: false
-  enabled: true
+  enabled: false
 database:
   require_ssl: false
