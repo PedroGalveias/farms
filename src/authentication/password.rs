@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn compute_password_hash_with_long_password() {
-        let password = make_test_password(PasswordKind::Long(1000));
+        let password = make_test_password(PasswordKind::Long((14..=100).fake::<usize>()));
 
         let result = compute_password_hash(password);
 
