@@ -41,10 +41,58 @@ pub fn verify_password_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fake::{Fake, faker::internet::en::Password as FakerPassword};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static TEST_PASSWORD_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
+    enum PasswordKind {
+        Standard,
+        SpecialCharacters,
+        Unicode,
+        Long(usize),
+        Empty,
+    }
+
+    fn next_password_seed() -> usize {
+        TEST_PASSWORD_COUNTER.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn make_test_password(kind: PasswordKind) -> SecretString {
+        let seed = next_password_seed();
+        match kind {
+            PasswordKind::Standard => {
+                let fake_password: String = FakerPassword(12..24).fake();
+                SecretString::from(format!("pw-{seed}-{fake_password}"))
+            }
+            PasswordKind::SpecialCharacters => {
+                SecretString::from(format!("pw-{seed}-!@#$%^&*()[]{{}}"))
+            }
+            PasswordKind::Unicode => SecretString::from(format!("pw-{seed}-pāsswörd🔒")),
+            PasswordKind::Long(length) => {
+                let mut password = format!("pw-{seed}-{}", FakerPassword(12..24).fake::<String>());
+                if password.len() < length {
+                    while password.len() < length {
+                        let remaining = length - password.len();
+                        let chunk: String = FakerPassword(12..24).fake();
+                        if chunk.len() <= remaining {
+                            password.push_str(&chunk);
+                        } else {
+                            password.push_str(&chunk[..remaining]);
+                        }
+                    }
+                } else {
+                    password.truncate(length);
+                }
+                SecretString::from(password)
+            }
+            PasswordKind::Empty => SecretString::from(String::new()),
+        }
+    }
 
     #[test]
     fn compute_password_hash_succeeds_with_valid_password() {
-        let password = SecretString::from("valid_password_123!".to_string());
+        let password = make_test_password(PasswordKind::Standard);
 
         let result = compute_password_hash(password);
 
@@ -53,7 +101,7 @@ mod tests {
 
     #[test]
     fn compute_password_hash_produces_phc_string_format() {
-        let password = SecretString::from("another_valid_password_123!".to_string());
+        let password = make_test_password(PasswordKind::Standard);
 
         let hash = compute_password_hash(password).unwrap();
         let hash_str = hash.expose_secret();
@@ -75,11 +123,10 @@ mod tests {
 
     #[test]
     fn compute_password_hash_with_same_password_produces_different_hashes() {
-        let password_a = SecretString::from("same_password".to_string());
-        let password_b = SecretString::from("same_password".to_string());
+        let password = make_test_password(PasswordKind::Standard);
 
-        let hash1 = compute_password_hash(password_a).unwrap();
-        let hash2 = compute_password_hash(password_b).unwrap();
+        let hash1 = compute_password_hash(password.clone()).unwrap();
+        let hash2 = compute_password_hash(password).unwrap();
 
         assert_ne!(
             hash1.expose_secret(),
@@ -90,7 +137,7 @@ mod tests {
 
     #[test]
     fn compute_password_hash_with_special_characters() {
-        let password = SecretString::from("p@$$w0rd!#%&*()[]{}".to_string());
+        let password = make_test_password(PasswordKind::SpecialCharacters);
 
         let result = compute_password_hash(password);
 
@@ -99,8 +146,7 @@ mod tests {
 
     #[test]
     fn compute_password_hash_with_long_password() {
-        let long_password = "a".repeat(1000);
-        let password = SecretString::from(long_password);
+        let password = make_test_password(PasswordKind::Long(1000));
 
         let result = compute_password_hash(password);
 
@@ -109,7 +155,7 @@ mod tests {
 
     #[test]
     fn compute_password_hash_with_unicode_characters() {
-        let password = SecretString::from("pāsswörd123🔒".to_string());
+        let password = make_test_password(PasswordKind::Unicode);
 
         let result = compute_password_hash(password);
 
@@ -118,8 +164,8 @@ mod tests {
 
     #[test]
     fn verify_password_hash_fails_with_incorrect_password() {
-        let correct_password = SecretString::from("correct_password".to_string());
-        let wrong_password = SecretString::from("wrong_password".to_string());
+        let correct_password = make_test_password(PasswordKind::Standard);
+        let wrong_password = make_test_password(PasswordKind::Standard);
         let hash = compute_password_hash(correct_password).unwrap();
 
         let result = verify_password_hash(hash, wrong_password);
@@ -138,7 +184,7 @@ mod tests {
 
     #[test]
     fn verify_password_hash_succeeds_with_correct_password() {
-        let password = SecretString::from("correct_password".to_string());
+        let password = make_test_password(PasswordKind::Standard);
         let hash = compute_password_hash(password.clone()).unwrap();
 
         let result = verify_password_hash(hash, password);
@@ -152,8 +198,10 @@ mod tests {
     #[test]
     fn verify_password_hash_fails_with_slightly_different_password() {
         // Arrange
-        let password = SecretString::from("Password123".to_string());
-        let wrong_password = SecretString::from("password123".to_string()); // Different case
+        let seed = next_password_seed();
+        let base_password = format!("CaseCheck{seed}Xy");
+        let password = SecretString::from(base_password.to_uppercase());
+        let wrong_password = SecretString::from(base_password.to_lowercase());
         let hash = compute_password_hash(password).unwrap();
 
         // Act
@@ -169,7 +217,7 @@ mod tests {
     #[test]
     fn verify_password_hash_with_invalid_hash_format() {
         // Arrange
-        let password = SecretString::from("test_password".to_string());
+        let password = make_test_password(PasswordKind::Standard);
         let invalid_hash = SecretString::from("not_a_valid_hash_format".to_string());
 
         // Act
@@ -188,7 +236,7 @@ mod tests {
     #[test]
     fn verify_password_hash_with_corrupted_hash() {
         // Arrange
-        let password = SecretString::from("test_password".to_string());
+        let password = make_test_password(PasswordKind::Standard);
         // Valid format but corrupted data
         let corrupted_hash =
             SecretString::from("$argon2id$v=19$m=15000,t=2,p=1$CORRUPTED$CORRUPTED".to_string());
@@ -203,7 +251,7 @@ mod tests {
     #[test]
     fn verify_password_hash_with_different_algorithm_fails() {
         // Arrange
-        let password = SecretString::from("test".to_string());
+        let password = make_test_password(PasswordKind::Standard);
         // This is a bcrypt hash (different algorithm)
         let bcrypt_hash = SecretString::from("$2b$12$invalid_bcrypt_hash_format".to_string());
 
@@ -220,7 +268,7 @@ mod tests {
     #[test]
     fn verify_password_hash_empty_password_against_empty_hash() {
         // Arrange
-        let empty_password = SecretString::from("".to_string());
+        let empty_password = make_test_password(PasswordKind::Empty);
         let hash = compute_password_hash(empty_password.clone()).unwrap();
 
         // Act
