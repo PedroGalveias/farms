@@ -45,21 +45,22 @@ farms/
 │   |── routes/
 │   |   ├── health_check.rs     # Health check endpoint
 |   |   └── farms/
-|   |       |-- mod.rs          # Farms module export and Farm struct
-|   |       |-- error.rs        # Farms errors
-│   |       |-- get.rs          # Farm get operations
+|   |       ├── mod.rs          # Farms module export and Farm struct
+|   |       ├── error.rs        # Farms errors
+│   |       ├── get.rs          # Farm get operations
 |   |       └── post.rs         # Farm post operations
 |   └── idempotency/
-|       |-- mod.rs              # Idempotency module export
-|       |-- key.rs              # Idempotency Key struct and validation
-|       |-- idempotency_data.rs # Idempotency data stored
-|       |-- error.rs            # Idempotency errors
+|       ├── mod.rs              # Idempotency module export
+|       ├── key.rs              # Idempotency Key struct and validation
+|       ├── idempotency_data.rs # Idempotency data stored
+|       ├── error.rs            # Idempotency errors
 |       └── persistence/
-|           |-- mod.rs          # Persistence of idempotency details module export
-|           |-- error.rs        # Idempotency persistence errors
-|           |-- redis.rs        # Idempotency persistence in Redis
+|           ├── mod.rs          # Persistence of idempotency details module export
+|           ├── error.rs        # Idempotency persistence errors
+|           ├── redis.rs        # Idempotency persistence in Redis
 |           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
 ├── migrations/                 # Database migrations
+├── otel/                       # OpenTelemetry Docker Compose and config files for local testing
 ├── configuration/              # Environment configs (base, local, production)
 ├── api_docs/                   # Bruno API collection
 ├── scripts/                    # Database setup scripts
@@ -179,6 +180,24 @@ docker run -p 8000:8000 \
 ```
 
 The Dockerfile uses a multi-stage build with cargo-chef for efficient layer caching.
+
+## OpenTelemetry Support
+
+To enable OpenTelemetry support the service must be compiled with the `opentelemetry` feature enabled otherwise it will not work. To do this use:
+
+```sh
+cargo build --release --features opentelemetry
+```
+
+After the compilation is complete using the configuration files need to be updated to enable the service to utilize OpenTelemetry collectors. Configuration example bellow with explanations:
+
+```yaml
+telemetry:
+  enabled: true
+  service_name: "farms-service"
+  endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"  # Set via environment variable  and should be the OTLP gRPC endpoint
+  environment: "production"
+```
 
 ## API Documentation
 

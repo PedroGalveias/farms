@@ -11,7 +11,7 @@ use farms::{
     idempotency::{HeaderPair, IdempotencyData, IdempotencyKey},
     routes::farms::Farm,
 };
-use rand::Rng;
+use rand::RngExt;
 use std::collections::HashSet;
 use uuid::Uuid;
 
