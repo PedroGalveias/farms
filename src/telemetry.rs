@@ -9,6 +9,7 @@ use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
     trace::{self, SdkTracerProvider, Tracer},
 };
+use tokio::task::JoinHandle;
 use tracing::{Subscriber, subscriber::set_global_default};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
