@@ -2,6 +2,14 @@ application:
   host: 0.0.0.0
 database:
   require_ssl: true
-email_client:
-  base_url: "https://api.mailersend.com"
-  sender_email: "something@farms.com"
+logging:
+  level: "info"
+  format: "bunyan"  # Bunyan-formatted JSON for production log aggregation
+telemetry:
+  enabled: true
+  endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"  # Set via environment variable
+  environment: "production"
+
+#email_client:
+#  base_url: "https://api.mailersend.com"
+#  sender_email: "something@farms.com"

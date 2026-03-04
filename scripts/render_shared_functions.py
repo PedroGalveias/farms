@@ -92,7 +92,7 @@ def store_database_connection_in_dotenv(db_connection_string, dotenv_file):
     store_in_dotenv('DATABASE_URL', db_connection_string, dotenv_file)
 
 
-def wait_for_postgres(connection_string, max_retries=30, delay=2):
+def wait_for_postgres(connection_string, max_retries=60, delay=5):
     """Wait for PostgreSQL to be ready to accept connections."""
     connection_info = urlparse(connection_string)
     for i in range(max_retries):

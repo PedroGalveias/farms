@@ -37,11 +37,8 @@ jobs:
           features: "rustls,postgres"
           args: --no-default-features
 
-      - name: Refresh Render DB
+      - name: Run DB migrations on DB
         env:
           RENDER_API_BASE_URL: "https://api.render.com/v1"
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-          RENDER_OWNER_ID: ${{ secrets.RENDER_OWNER_ID }}
-          RENDER_ENVIRONMENT_ID: ${{ secrets.RENDER_ENVIRONMENT_ID }}
         run: python scripts/render_db_migrate.py
