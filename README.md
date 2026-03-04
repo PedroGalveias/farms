@@ -31,6 +31,10 @@ farms/
 │   ├── configuration.rs        # Settings and database connection
 │   ├── telemetry.rs            # Logging configuration
 │   ├── errors.rs               # Error utilities
+│   ├── authentication/         # Authentication layer (password hashing, future: sessions)
+│   │   ├── mod.rs              # Authentication module exports
+│   │   ├── password.rs         # Password hashing and verification logic
+│   │   └── credentials.rs      # Credential validation and database queries
 │   ├── domain/                 # Domain layer (business logic & validation)
 │   │   ├── mod.rs              # Domain module exports (farm, macros, test_data)
 │   │   ├── macros.rs           # Shared macros for sqlx trait implementations
