@@ -2,9 +2,10 @@ use crate::authentication::password::{compute_password_hash, verify_password_has
 use crate::errors::error_chain_fmt;
 use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Formatter};
+use std::sync::LazyLock;
 use uuid::Uuid;
 
 #[derive(thiserror::Error)]
@@ -21,6 +22,12 @@ impl Debug for ValidateCredentialsError {
     }
 }
 
+// This static value is used when the email does not exist. This is used to reduce timing side channels.
+static DUMMY_PASSWORD_HASH: LazyLock<SecretString> = LazyLock::new(|| {
+    compute_password_hash(SecretString::from("dummy-pw".to_string()))
+        .expect("Failed to compute dummy password hash.")
+});
+
 #[tracing::instrument(name = "Validate credentials", skip(email, password, pool))]
 pub async fn validate_credentials(
     email: &str,
@@ -32,14 +39,22 @@ pub async fn validate_credentials(
         .context("Failed to retrieve stored credentials.")
         .map_err(ValidateCredentialsError::UnexpectedError)?;
 
-    let (id, password_hash) =
-        stored_credentials.ok_or_else(|| anyhow::anyhow!("Invalid email or password."))?;
+    let (user_id, expected_password_hash) = match stored_credentials {
+        Some((id, password_hash)) => (Some(id), password_hash),
+        None => (None, DUMMY_PASSWORD_HASH.clone()),
+    };
 
-    verify_password_hash(password_hash, password)
-        .context("Invalid password.")
-        .map_err(ValidateCredentialsError::InvalidCredentials)?;
+    let verification_result =
+        spawn_blocking_with_tracing(move || verify_password_hash(expected_password_hash, password))
+            .await
+            .context("Failed to spawn blocking task.")
+            .map_err(ValidateCredentialsError::UnexpectedError)?;
 
-    Ok(id)
+    verification_result.map_err(ValidateCredentialsError::InvalidCredentials)?;
+
+    user_id.ok_or_else(|| {
+        ValidateCredentialsError::InvalidCredentials(anyhow::anyhow!("Invalid email or password."))
+    })
 }
 
 #[tracing::instrument(name = "Change password", skip(password, pool))]
