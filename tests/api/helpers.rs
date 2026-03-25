@@ -1,7 +1,9 @@
+use chrono::Utc;
 use deadpool_redis::{
     Pool,
     redis::{AsyncTypedCommands, RedisError},
 };
+use farms::authentication::change_password;
 use farms::{
     configuration::{
         DatabaseSettings, LogFormat, LoggingLevel, LoggingSettings, Settings, TelemetrySettings,
@@ -11,10 +13,61 @@ use farms::{
     telemetry::init_telemetry,
 };
 use once_cell::sync::Lazy;
+use secrecy::SecretString;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
+
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        let user_id = Uuid::new_v4();
+        let username = format!("user-{}", user_id);
+        let email = format!("{}@example.com", user_id);
+        let password = format!("password-{}", Uuid::new_v4());
+
+        Self {
+            user_id,
+            username,
+            email,
+            password,
+        }
+    }
+
+    pub fn password_secret(&self) -> SecretString {
+        SecretString::from(self.password.clone())
+    }
+
+    pub async fn store(&self, pool: &PgPool) {
+        sqlx::query!(
+            r#"
+            INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5::user_role, $6, $7)
+            "#,
+        )
+        .bind(self.user_id)
+        .bind(&self.username)
+        .bind(&self.email)
+        .bind("placeholder-hash")
+        .bind("test-user")
+        .bind(Utc::now())
+        .bind(Option::<chrono::DateTime<Utc>>::None)
+        .execute(pool)
+        .await
+        .expect("Failed to insert test user.");
+
+        change_password(self.user_id, self.password_secret(), pool)
+            .await
+            .expect("Failed to set test user password.");
+    }
+}
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
