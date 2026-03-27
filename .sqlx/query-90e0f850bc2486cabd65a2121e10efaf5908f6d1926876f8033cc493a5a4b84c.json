@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, password_hash, role as \"role: Role\"\n        FROM users\n        WHERE email = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "password_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "role: Role",
+        "type_info": {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "USER",
+                "ADMIN"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "90e0f850bc2486cabd65a2121e10efaf5908f6d1926876f8033cc493a5a4b84c"
+}

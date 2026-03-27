@@ -16,16 +16,33 @@ async fn assert_invalid_credentials(email: &str, password: SecretString, pool: &
 }
 
 #[tokio::test]
-async fn validate_credentials_returns_user_id_for_valid_credentials() {
+async fn validate_credentials_returns_authenticated_user_for_valid_credentials() {
     let app = spawn_app().await;
-    let user = TestUser::generate();
+    let user = TestUser::generate_user();
     user.store(&app.db_pool).await;
 
-    let user_id = validate_credentials(&user.email, user.password_secret(), &app.db_pool)
-        .await
-        .expect("Credentials should be valid.");
+    let authenticated_user =
+        validate_credentials(&user.email, user.password_secret(), &app.db_pool)
+            .await
+            .expect("Credentials should be valid.");
 
-    assert_eq!(user_id, user.user_id);
+    assert_eq!(authenticated_user.user_id, user.user_id);
+    assert_eq!(authenticated_user.role, Role::User);
+}
+
+#[tokio::test]
+async fn validate_credentials_returns_admin_role_for_admin_user() {
+    let app = spawn_app().await;
+    let user = TestUser::generate_admin();
+    user.store(&app.db_pool).await;
+
+    let authenticated_user =
+        validate_credentials(&user.email, user.password_secret(), &app.db_pool)
+            .await
+            .expect("Credentials should be valid.");
+
+    assert_eq!(authenticated_user.user_id, user.user_id);
+    assert_eq!(authenticated_user.role, Role::Admin);
 }
 
 #[tokio::test]

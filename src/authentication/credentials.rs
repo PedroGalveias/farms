@@ -1,4 +1,5 @@
 use crate::authentication::password::{compute_password_hash, verify_password_hash};
+use crate::domain::user::Role;
 use crate::errors::error_chain_fmt;
 use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
@@ -7,6 +8,18 @@ use sqlx::PgPool;
 use std::fmt::{Debug, Formatter};
 use std::sync::LazyLock;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthenticatedUser {
+    pub id: Uuid,
+    pub role: Role,
+}
+
+struct StoredCredentials {
+    id: Uuid,
+    password_hash: SecretString,
+    role: Role,
+}
 
 #[derive(thiserror::Error)]
 pub enum ValidateCredentialsError {
@@ -33,14 +46,20 @@ pub async fn validate_credentials(
     email: &str,
     password: SecretString,
     pool: &PgPool,
-) -> Result<Uuid, ValidateCredentialsError> {
+) -> Result<AuthenticatedUser, ValidateCredentialsError> {
     let stored_credentials = get_credentials(email, pool)
         .await
         .context("Failed to retrieve stored credentials.")
         .map_err(ValidateCredentialsError::UnexpectedError)?;
 
-    let (user_id, expected_password_hash) = match stored_credentials {
-        Some((id, password_hash)) => (Some(id), password_hash),
+    let (authenticated_user, expected_password_hash) = match stored_credentials {
+        Some(credentials) => (
+            Some(AuthenticatedUser {
+                id: credentials.id,
+                role: credentials.role,
+            }),
+            credentials.password_hash,
+        ),
         None => (None, DUMMY_PASSWORD_HASH.clone()),
     };
 
@@ -52,7 +71,7 @@ pub async fn validate_credentials(
 
     verification_result.map_err(ValidateCredentialsError::InvalidCredentials)?;
 
-    user_id.ok_or_else(|| {
+    authenticated_user.ok_or_else(|| {
         ValidateCredentialsError::InvalidCredentials(anyhow::anyhow!("Invalid email or password."))
     })
 }
@@ -87,10 +106,10 @@ pub async fn change_password(
 async fn get_credentials(
     email: &str,
     pool: &PgPool,
-) -> Result<Option<(Uuid, SecretString)>, anyhow::Error> {
+) -> Result<Option<StoredCredentials>, anyhow::Error> {
     let user = sqlx::query!(
         r#"
-        SELECT id, password_hash
+        SELECT id, password_hash, role as "role: Role"
         FROM users
         WHERE email = $1
         "#,
@@ -99,7 +118,11 @@ async fn get_credentials(
     .fetch_optional(pool)
     .await
     .context("Failed to retrieve user credentials.")?
-    .map(|user| (user.id, SecretString::from(user.password_hash)));
+    .map(|user| StoredCredentials {
+        id: user.id,
+        password_hash: SecretString::from(user.password_hash),
+        role: user.role,
+    });
 
     Ok(user)
 }

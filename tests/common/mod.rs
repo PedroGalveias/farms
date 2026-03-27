@@ -22,25 +22,35 @@ use uuid::Uuid;
 
 #[allow(dead_code)]
 pub struct TestUser {
-    pub user_id: Uuid,
+    pub id: Uuid,
     pub username: String,
     pub email: String,
     pub password: String,
+    pub role: Role,
 }
 
 #[allow(dead_code)]
 impl TestUser {
-    pub fn generate() -> Self {
-        let user_id = Uuid::new_v4();
-        let username = format!("user-{}", user_id);
-        let email = format!("{}@example.com", user_id);
+    pub fn generate_user() -> Self {
+        Self::generate_with_role(Role::User)
+    }
+
+    pub fn generate_admin() -> Self {
+        Self::generate_with_role(Role::Admin)
+    }
+
+    pub fn generate_with_role(role: Role) -> Self {
+        let id = Uuid::new_v4();
+        let username = format!("user-{}", id);
+        let email = format!("{}@example.com", id);
         let password = format!("password-{}", Uuid::new_v4());
 
         Self {
-            user_id,
+            id,
             username,
             email,
             password,
+            role,
         }
     }
 
@@ -55,11 +65,11 @@ impl TestUser {
             VALUES ($1, $2, $3, $4, $5::user_role, $6, $7)
 
             "#,
-            self.user_id,
+            self.id,
             &self.username,
             &self.email,
             "placeholder-hash",
-            Role::User as Role,
+            self.role as Role,
             Utc::now(),
             Option::<DateTime<Utc>>::None,
         )
@@ -67,7 +77,7 @@ impl TestUser {
         .await
         .expect("Failed to insert test user.");
 
-        change_password(self.user_id, self.password_secret(), pool)
+        change_password(self.id, self.password_secret(), pool)
             .await
             .expect("Failed to set test user password.");
     }
@@ -120,6 +130,16 @@ impl TestApp {
             .post(&format!("{}/farms", &self.address))
             .header("Content-Type", "application/json")
             .json(&body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    pub async fn post_login(&self, body: &serde_json::Value) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/login", self.address))
+            .header("Content-Type", "application/json")
+            .json(body)
             .send()
             .await
             .expect("Failed to execute request.")
