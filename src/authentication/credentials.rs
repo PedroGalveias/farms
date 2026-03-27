@@ -2,7 +2,7 @@ use crate::authentication::password::{compute_password_hash, verify_password_has
 use crate::errors::error_chain_fmt;
 use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 use std::fmt::{Debug, Formatter};
 use std::sync::LazyLock;

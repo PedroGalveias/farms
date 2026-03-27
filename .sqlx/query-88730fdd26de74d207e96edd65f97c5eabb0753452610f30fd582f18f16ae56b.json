@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO users (id, username, email, password_hash, role, created_at, updated_at)\n            VALUES ($1, $2, $3, $4, $5::user_role, $6, $7)\n\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "USER",
+                "ADMIN"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "88730fdd26de74d207e96edd65f97c5eabb0753452610f30fd582f18f16ae56b"
+}
