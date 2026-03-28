@@ -1,20 +1,77 @@
+use chrono::{DateTime, Utc};
 use deadpool_redis::{
     Pool,
     redis::{AsyncTypedCommands, RedisError},
 };
+use farms::authentication::change_password;
 use farms::{
     configuration::{
         DatabaseSettings, LogFormat, LoggingLevel, LoggingSettings, Settings, TelemetrySettings,
         get_configuration,
     },
+    domain::user::Role,
     startup::{Application, get_connection_pool, get_redis_connection_pool},
     telemetry::init_telemetry,
 };
 use once_cell::sync::Lazy;
+use secrecy::SecretString;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
+
+#[allow(dead_code)]
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub password: String,
+}
+
+#[allow(dead_code)]
+impl TestUser {
+    pub fn generate() -> Self {
+        let user_id = Uuid::new_v4();
+        let username = format!("user-{}", user_id);
+        let email = format!("{}@example.com", user_id);
+        let password = format!("password-{}", Uuid::new_v4());
+
+        Self {
+            user_id,
+            username,
+            email,
+            password,
+        }
+    }
+
+    pub fn password_secret(&self) -> SecretString {
+        SecretString::from(self.password.clone())
+    }
+
+    pub async fn store(&self, pool: &PgPool) {
+        sqlx::query!(
+            r#"
+            INSERT INTO users (id, username, email, password_hash, role, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5::user_role, $6, $7)
+
+            "#,
+            self.user_id,
+            &self.username,
+            &self.email,
+            "placeholder-hash",
+            Role::User as Role,
+            Utc::now(),
+            Option::<DateTime<Utc>>::None,
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to insert test user.");
+
+        change_password(self.user_id, self.password_secret(), pool)
+            .await
+            .expect("Failed to set test user password.");
+    }
+}
 
 // Ensure that the `tracing` stack is only initialised once using `once_cell`
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -40,6 +97,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
+#[allow(dead_code)]
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
@@ -47,6 +105,7 @@ pub struct TestApp {
     pub configuration: Settings,
     pub api_client: reqwest::Client,
 }
+#[allow(dead_code)]
 impl TestApp {
     pub async fn get_farms(&self) -> reqwest::Response {
         self.api_client
@@ -134,6 +193,7 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
     connection_pool
 }
 
+#[allow(dead_code)]
 pub async fn redis_exists_with_retry(
     connection: &mut deadpool_redis::Connection,
     key: &str,
