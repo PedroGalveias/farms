@@ -1,5 +1,5 @@
 use crate::configuration::{DatabaseSettings, RedisSettings, Settings};
-use crate::routes::{farms, health_check};
+use crate::routes::{authentication, farms, health_check};
 use actix_web::{App, HttpServer, dev::Server, web, web::Data};
 use deadpool_redis::{Config, Pool, Runtime};
 use secrecy::ExposeSecret;
@@ -84,6 +84,7 @@ pub async fn run(
             .route("/health_check", web::get().to(health_check))
             .route("/farms", web::post().to(farms::create))
             .route("/farms", web::get().to(farms::get_all))
+            .route("/login", web::post().to(authentication::log_in))
             // Get pointer copy and attach it to the application state
             .app_data(db_pool.clone())
             .app_data(configuration.clone())

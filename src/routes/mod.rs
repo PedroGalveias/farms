@@ -1,3 +1,4 @@
+pub mod authentication;
 pub mod farms;
 mod health_check;
 
