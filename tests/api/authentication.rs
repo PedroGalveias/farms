@@ -35,7 +35,7 @@ async fn login_returns_200_and_user_data_for_valid_credentials() {
 }
 
 #[tokio::test]
-async fn login_returns_admin_role_for_admin_user() {
+async fn login_returns_200_and_admin_data_for_valid_credentials() {
     let app = spawn_app().await;
     let user = TestUser::generate_admin();
     user.store(&app.db_pool).await;
