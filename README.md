@@ -45,12 +45,12 @@ farms/
 │   │   ├── macros.rs           # Shared macros for sqlx trait implementations
 │   │   ├── test_data.rs        # Shared test data constants (reusable)
 │   │   ├── farm/               # Farm entity domain logic
-│   │       ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
-│   │       ├── address.rs      # Validated address type
-│   │       ├── canton.rs       # Validated Swiss canton type
-│   │       ├── categories.rs   # Validated categories type
-│   │       ├── name.rs         # Validated farm name type
-│   │       └── point.rs        # Validated coordinates type
+│   │   │   ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
+│   │   │   ├── address.rs      # Validated address type
+│   │   │   ├── canton.rs       # Validated Swiss canton type
+│   │   │   ├── categories.rs   # Validated categories type
+│   │   │   ├── name.rs         # Validated farm name type
+│   │   │   └── point.rs        # Validated coordinates type
 │   │   └── user/               # User domain logic
 │   │       ├── mod.rs          # User domain exports
 │   │       └── role.rs         # User role enum mapped to PostgreSQL
