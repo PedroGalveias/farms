@@ -1,11 +1,15 @@
 # Farms
 
-A Rust web service for managing farm data in Switzerland, built with Actix Web and PostgreSQL.
+A Rust web service for managing farm data in Switzerland, built with Actix Web, PostgreSQL, and Redis/Valkey-backed
+infrastructure.
 
 ## Features
 
 - **RESTful API** for creating and retrieving farm information
+- **Role-aware authentication** with credential validation against PostgreSQL
+- **Login endpoint** returning authenticated user identity and role
 - **PostgreSQL database** with SQLx for type-safe queries
+- **Redis/Valkey integration** for idempotency support and future session storage
 - **Structured logging** with tracing and bunyan formatting
 - **Docker support** for containerized deployment
 - **Environment-based configuration** (local, production)
@@ -16,6 +20,7 @@ A Rust web service for managing farm data in Switzerland, built with Actix Web a
 
 - **Web Framework**: Actix Web 4.12 with async/await
 - **Database**: PostgreSQL with SQLx 0.8 (compile-time verified queries)
+- **Cache / Session Infrastructure**: Redis or Valkey via deadpool-redis
 - **Async Runtime**: Tokio with multi-threading
 - **Logging**: tracing, tracing-subscriber, tracing-actix-web
 - **Serialization**: serde, serde_json, rmp-serde
@@ -31,52 +36,61 @@ farms/
 │   ├── configuration.rs        # Settings and database connection
 │   ├── telemetry.rs            # Logging configuration
 │   ├── errors.rs               # Error utilities
-│   ├── authentication/         # Authentication layer (password hashing, future: sessions)
+│   ├── authentication/         # Authentication service layer
 │   │   ├── mod.rs              # Authentication module exports
 │   │   ├── password.rs         # Password hashing and verification logic
-│   │   └── credentials.rs      # Credential validation and database queries
+│   │   └── credentials.rs      # Credential validation and authenticated user lookup
 │   ├── domain/                 # Domain layer (business logic & validation)
-│   │   ├── mod.rs              # Domain module exports (farm, macros, test_data)
+│   │   ├── mod.rs              # Domain module exports (farm, user, macros, test_data)
 │   │   ├── macros.rs           # Shared macros for sqlx trait implementations
 │   │   ├── test_data.rs        # Shared test data constants (reusable)
-│   │   └── farm/               # Farm entity domain logic
+│   │   ├── farm/               # Farm entity domain logic
 │   │       ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
 │   │       ├── address.rs      # Validated address type
 │   │       ├── canton.rs       # Validated Swiss canton type
 │   │       ├── categories.rs   # Validated categories type
 │   │       ├── name.rs         # Validated farm name type
 │   │       └── point.rs        # Validated coordinates type
-│   |── routes/
-│   |   ├── health_check.rs     # Health check endpoint
-|   |   └── farms/
-|   |       ├── mod.rs          # Farms module export and Farm struct
-|   |       ├── error.rs        # Farms errors
-│   |       ├── get.rs          # Farm get operations
-|   |       └── post.rs         # Farm post operations
-|   └── idempotency/
-|       ├── mod.rs              # Idempotency module export
-|       ├── key.rs              # Idempotency Key struct and validation
-|       ├── idempotency_data.rs # Idempotency data stored
-|       ├── error.rs            # Idempotency errors
-|       └── persistence/
-|           ├── mod.rs          # Persistence of idempotency details module export
-|           ├── error.rs        # Idempotency persistence errors
-|           ├── redis.rs        # Idempotency persistence in Redis
-|           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
+│   │   └── user/               # User domain logic
+│   │       ├── mod.rs          # User domain exports
+│   │       └── role.rs         # User role enum mapped to PostgreSQL
+│   ├── routes/
+│   │   ├── authentication/
+│   │   │   ├── mod.rs          # Authentication route exports
+│   │   │   ├── error.rs        # Login route errors
+│   │   │   └── login.rs        # POST /login endpoint
+│   │   ├── health_check.rs     # Health check endpoint
+│   │   └── farms/
+│   │       ├── mod.rs          # Farms module export and Farm struct
+│   │       ├── error.rs        # Farms errors
+│   │       ├── get.rs          # Farm get operations
+│   │       └── post.rs         # Farm post operations
+│   └── idempotency/
+│       ├── mod.rs              # Idempotency module export
+│       ├── key.rs              # Idempotency Key struct and validation
+│       ├── idempotency_data.rs # Idempotency data stored
+│       ├── error.rs            # Idempotency errors
+│       └── persistence/
+│           ├── mod.rs          # Persistence of idempotency details module export
+│           ├── error.rs        # Idempotency persistence errors
+│           ├── redis.rs        # Idempotency persistence in Redis
+│           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
 ├── migrations/                 # Database migrations
 ├── otel/                       # OpenTelemetry Docker Compose and config files for local testing
 ├── configuration/              # Environment configs (base, local, production)
 ├── api_docs/                   # Bruno API collection
 ├── scripts/                    # Database setup scripts
 └── tests/                      # Integration tests
-    └── api/                    # API integration tests
+    ├── common/                 # Shared integration test helpers
+    ├── authentication/         # Authentication service integration tests
+    └── api/                    # HTTP/API integration tests
 ```
 
 ## Prerequisites
 
 - Rust 1.x (edition 2024)
 - PostgreSQL
-- Valkey
+- Redis or Valkey
 - SQLx CLI: `cargo install sqlx-cli --no-default-features --features postgres`
 - Docker (optional, for database setup)
 
@@ -129,6 +143,22 @@ cargo build --release
 ```
 
 The server runs on `http://localhost:8000` by default.
+
+## Current API Surface
+
+The service currently exposes:
+
+- `GET /health_check`
+- `GET /farms`
+- `POST /farms`
+- `POST /login`
+
+### Authentication Status
+
+`POST /login` currently validates credentials and returns the authenticated user's id and role.
+
+This endpoint does **not** yet create or persist a session, and authenticated route protection is not yet enforced.
+Those concerns are planned for a follow-up iteration.
 
 ### Testing
 
