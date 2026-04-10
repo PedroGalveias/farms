@@ -126,3 +126,27 @@ async fn get_credentials(
 
     Ok(user)
 }
+
+#[tracing::instrument(name = "Get user by id", skip(pool))]
+pub async fn get_user_by_id(
+    id: Uuid,
+    pool: &PgPool,
+) -> Result<Option<AuthenticatedUser>, anyhow::Error> {
+    let user = sqlx::query!(
+        r#"
+        SELECT id, role as "role: Role"
+        FROM users
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed to retrieve user by id.")?
+    .map(|user| AuthenticatedUser {
+        id: user.id,
+        role: user.role,
+    });
+
+    Ok(user)
+}
