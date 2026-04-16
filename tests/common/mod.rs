@@ -20,7 +20,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
 
-#[allow(dead_code)]
 pub struct TestUser {
     pub id: Uuid,
     pub username: String,
@@ -29,7 +28,6 @@ pub struct TestUser {
     pub role: Role,
 }
 
-#[allow(dead_code)]
 impl TestUser {
     pub fn generate_user() -> Self {
         Self::generate_with_role(Role::User)
@@ -107,16 +105,19 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
-#[allow(dead_code)]
 pub struct TestApp {
+    #[allow(dead_code)]
     pub address: String,
     pub db_pool: PgPool,
+    #[allow(dead_code)]
     pub redis_pool: Pool,
+    #[allow(dead_code)]
     pub configuration: Settings,
+    #[allow(dead_code)]
     pub api_client: reqwest::Client,
 }
-#[allow(dead_code)]
 impl TestApp {
+    #[allow(dead_code)]
     pub async fn get_farms(&self) -> reqwest::Response {
         self.api_client
             .get(format!("{}/farms", self.address))
@@ -125,9 +126,10 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
+    #[allow(dead_code)]
     pub async fn post_farm(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
-            .post(&format!("{}/farms", &self.address))
+            .post(format!("{}/farms", &self.address))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -135,11 +137,30 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
+    #[allow(dead_code)]
     pub async fn post_login(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
             .post(format!("{}/login", self.address))
             .header("Content-Type", "application/json")
             .json(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    #[allow(dead_code)]
+    pub async fn post_logout(&self) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/logout", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_me(&self) -> reqwest::Response {
+        self.api_client
+            .get(format!("{}/me", &self.address))
             .send()
             .await
             .expect("Failed to execute request.")
@@ -171,10 +192,11 @@ pub async fn spawn_app() -> TestApp {
 
     // Launch the server as a background task
     // tokio::spawn returns a handle to the spawned future,
-    // but we have no use for it here, hence the non-binding let
-    let _ = tokio::spawn(application.run_until_stopped());
+    // but we have no use for it here, hence the `drop()` usage.
+    drop(tokio::spawn(application.run_until_stopped()));
 
     let api_client = reqwest::Client::builder()
+        .cookie_store(true)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap();

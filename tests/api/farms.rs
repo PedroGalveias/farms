@@ -580,8 +580,7 @@ async fn create_farm_creates_redis_key_with_response() {
 
     let idempotency_key = IdempotencyKey::try_from(format!(
         "{}:{}",
-        app.configuration.idempotency.redis_key_prefix,
-        idempotency_key.to_string()
+        app.configuration.idempotency.redis_key_prefix, idempotency_key
     ))
     .expect("Failed to parse idempotency key");
     let mut redis_connection = app

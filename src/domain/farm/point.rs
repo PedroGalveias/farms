@@ -669,10 +669,10 @@ mod tests {
     }
 
     #[test]
-    fn clone_creates_independent_copy() {
+    fn copy_creates_independent_value() {
         let (lat, lon) = random_swiss_coordinates();
         let point1 = Point::new(lat, lon);
-        let point2 = point1.clone();
+        let point2 = point1;
 
         assert_eq!(point1, point2);
         assert_eq!(point1.latitude, point2.latitude);

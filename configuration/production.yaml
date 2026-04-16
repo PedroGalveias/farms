@@ -2,6 +2,9 @@ application:
   host: 0.0.0.0
 database:
   require_ssl: true
+session:
+  secret_key: "${SESSION_SECRET_KEY}"
+  cookie_secure: true
 logging:
   level: "info"
   format: "bunyan"  # Bunyan-formatted JSON for production log aggregation

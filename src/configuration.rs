@@ -8,6 +8,7 @@ pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
     pub redis: RedisSettings,
+    pub session: SessionSettings,
     pub idempotency: IdempotencySettings,
     pub logging: LoggingSettings,
     pub telemetry: TelemetrySettings,
@@ -40,6 +41,24 @@ pub struct RedisSettings {
     pub pool_max_size: Option<usize>,
     pub timeout_seconds: Option<u64>,
     pub session_key_prefix: String,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct SessionSettings {
+    pub secret_key: SecretString,
+    pub cookie_name: String,
+    pub cookie_secure: bool,
+    pub cookie_http_only: bool,
+    pub cookie_same_site: SessionSameSite,
+    pub ttl_seconds: i64,
+}
+
+#[derive(serde::Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionSameSite {
+    Lax,
+    Strict,
+    None,
 }
 
 #[derive(serde::Deserialize, Clone)]
