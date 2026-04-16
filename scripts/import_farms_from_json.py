@@ -86,6 +86,7 @@ CANTON_BY_STATE = {
     "Zug": "ZG",
     "Zürich": "ZH",
 }
+SWISS_COUNTRY_LABELS = frozenset({"schweiz", "suisse", "svizzera", "svizra"})
 
 
 @dataclass(frozen=True)
@@ -201,6 +202,20 @@ def sanitize_name(raw_name: object | None) -> str | None:
     return sanitized[:256]
 
 
+def strip_trailing_swiss_country(display_name: str) -> str:
+    parts = [part.strip() for part in display_name.split(",")]
+    if not parts:
+        return display_name.strip(" ,")
+
+    trailing_part = parts[-1]
+    trailing_labels = [label.strip().casefold() for label in trailing_part.split("/") if label.strip()]
+
+    if trailing_labels and all(label in SWISS_COUNTRY_LABELS for label in trailing_labels):
+        parts = parts[:-1]
+
+    return ", ".join(part for part in parts if part).strip(" ,")
+
+
 def build_address(location: dict) -> str | None:
     address = location.get("address") or {}
     display_name = normalize_text(location.get("display_name"))
@@ -237,11 +252,7 @@ def build_address(location: dict) -> str | None:
         return candidate[:200]
 
     if display_name:
-        cleaned_display_name = re.sub(
-            r",\s*(Schweiz|Suisse|Svizzera|Svizra)(?:/[^,]+)*\s*$",
-            "",
-            display_name,
-        ).strip(" ,")
+        cleaned_display_name = strip_trailing_swiss_country(display_name)
         if len(cleaned_display_name) >= 5:
             return cleaned_display_name[:200]
 
