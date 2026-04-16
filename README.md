@@ -201,18 +201,24 @@ SKIP_DOCKER=true ./scripts/init_db.sh
 
 ### Import Farm Dataset
 
-To import the JSON dataset used in this project into the `farms` table:
+Use the importer to normalize the source JSON dataset into the current `farms`
+schema before inserting rows into PostgreSQL.
+
+The script:
+
+- reads the top-level `locations` array from the JSON file
+- normalizes each row into `name`, `address`, `canton`, `coordinates`, and `categories`
+- skips rows that still fail validation after normalization
+- skips duplicates already present in the source file or in the database
+- prints a summary of inserted rows and skipped-row reasons
+
+Run a dry run first to see the normalization and skip summary without writing to
+the database:
 
 ```bash
 python3 scripts/import_farms_from_json.py --json-path /absolute/path/to/farms_with_categorized_products.json --dry-run
 python3 scripts/import_farms_from_json.py --json-path /absolute/path/to/farms_with_categorized_products.json
 ```
-
-The importer:
-
-- normalizes farm names, addresses, cantons, coordinates, and categories into the current schema
-- skips rows missing required farm data after normalization
-- skips duplicate records already present in the database
 
 ## Docker Deployment
 

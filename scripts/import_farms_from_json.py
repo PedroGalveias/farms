@@ -45,6 +45,8 @@ DEFAULT_DB_USER = "postgres"
 DEFAULT_DB_PASSWORD = "password"
 
 NAME_FORBIDDEN_CHARACTERS = "/()\"<>\\{}"
+# Order matters: these keys are tried from the most specific locality labels
+# toward broader ones until we find the best available locality for the farm.
 CITY_KEYS = [
     "village",
     "town",
@@ -102,6 +104,9 @@ class FarmRecord:
 
     @property
     def natural_key(self) -> tuple[str, str, str, float, float]:
+        # This is the importer-side identity for a farm. We use it to detect
+        # duplicates both within the source file and against rows already
+        # present in the database, without relying on the source dataset's ids.
         return (
             self.name.casefold(),
             self.address.casefold(),
@@ -183,6 +188,9 @@ def load_dotenv() -> None:
 def normalize_text(value: object | None) -> str | None:
     if value is None:
         return None
+    # Source data mixes HTML entities, non-breaking spaces, and irregular
+    # whitespace. Normalize them once here so all later parsing operates on
+    # comparable strings.
     text = html.unescape(str(value))
     text = text.replace("\u00a0", " ")
     text = re.sub(r"\s+", " ", text).strip()
@@ -194,6 +202,9 @@ def sanitize_name(raw_name: object | None) -> str | None:
     if text is None:
         return None
 
+    # Farm names in the API/domain reject a few problematic characters. Replace
+    # them up front so imported rows are shaped like rows created through the
+    # Rust service.
     translation = str.maketrans({character: " " for character in NAME_FORBIDDEN_CHARACTERS})
     sanitized = text.translate(translation)
     sanitized = re.sub(r"\s+", " ", sanitized).strip()
@@ -203,6 +214,9 @@ def sanitize_name(raw_name: object | None) -> str | None:
 
 
 def strip_trailing_swiss_country(display_name: str) -> str:
+    # Nominatim-style display names often end with the multilingual Swiss
+    # country label. Dropping it keeps fallback addresses shorter and more
+    # consistent with addresses already stored in the service.
     parts = [part.strip() for part in display_name.split(",")]
     if not parts:
         return display_name.strip(" ,")
@@ -252,6 +266,8 @@ def build_address(location: dict) -> str | None:
         return candidate[:200]
 
     if display_name:
+        # If the structured address is too sparse, fall back to the provider's
+        # display name after trimming the trailing country label.
         cleaned_display_name = strip_trailing_swiss_country(display_name)
         if len(cleaned_display_name) >= 5:
             return cleaned_display_name[:200]
@@ -262,10 +278,14 @@ def build_address(location: dict) -> str | None:
 def extract_canton(location: dict) -> str | None:
     address = location.get("address") or {}
     iso_code = normalize_text(address.get("ISO3166-2-lvl4"))
+    # Prefer ISO region codes when available because they are already explicit
+    # and unambiguous (e.g. CH-ZH -> ZH).
     if iso_code and re.fullmatch(r"CH-[A-Z]{2}", iso_code):
         return iso_code.split("-", 1)[1]
 
     state = normalize_text(address.get("state"))
+    # Fall back to matching the human-readable canton label from the source
+    # against the set of canton spellings we support.
     if state and state in CANTON_BY_STATE:
         return CANTON_BY_STATE[state]
 
@@ -278,6 +298,8 @@ def extract_categories(location: dict) -> tuple[str, ...]:
 
     candidate_values: Iterable[object]
     categorized_products = location.get("categorized_products") or {}
+    # The categorized view is the most useful signal. If it is missing, fall
+    # back to the raw products list and use those values as categories.
     candidate_values = categorized_products.keys() if categorized_products else (location.get("products") or [])
 
     for value in candidate_values:
@@ -302,6 +324,8 @@ def normalize_coordinates(location: dict) -> tuple[float, float] | None:
     except (KeyError, TypeError, ValueError):
         return None
 
+    # Keep imports aligned with the current service validation rules by only
+    # accepting coordinates inside Switzerland's bounding box.
     if not (45.8 <= latitude <= 47.9):
         return None
     if not (5.9 <= longitude <= 10.6):
@@ -311,6 +335,9 @@ def normalize_coordinates(location: dict) -> tuple[float, float] | None:
 
 
 def location_to_record(location: dict, source_index: int) -> tuple[FarmRecord | None, str | None]:
+    # Convert one raw JSON location into the normalized record we can insert
+    # into `farms`. Returning `(None, reason)` lets the caller aggregate skip
+    # counts without raising for ordinary data-quality issues.
     name = sanitize_name(location.get("title") or location.get("display_name"))
     if name is None:
         return None, "missing_name"
@@ -403,6 +430,8 @@ def fetch_existing_natural_keys(connection) -> set[tuple[str, str, str, float, f
     existing_keys: set[tuple[str, str, str, float, float]] = set()
     for name, address, canton, coordinates_text in rows:
         latitude, longitude = parse_point_text(coordinates_text)
+        # Mirror `FarmRecord.natural_key` so the importer can compare incoming
+        # rows to already-imported rows using the same duplicate logic.
         existing_keys.add(
             (
                 str(name).casefold(),
@@ -419,6 +448,8 @@ def insert_records(connection, records: list[FarmRecord]) -> None:
     from psycopg2.extras import execute_batch
 
     now = datetime.now(timezone.utc)
+    # Generate database rows in the order expected by the INSERT statement.
+    # Coordinates are stored as PostgreSQL POINT(longitude, latitude).
     rows = [
         (
             str(uuid.uuid4()),
@@ -499,6 +530,8 @@ def main() -> int:
                 examples.append(record.source_title)
             continue
 
+        # Only rows that survive normalization and in-file duplicate detection
+        # move on to the database comparison/insert phase.
         seen_in_source.add(record.natural_key)
         valid_records.append(record)
 
@@ -537,6 +570,8 @@ def main() -> int:
                     return 1
 
             existing_keys = fetch_existing_natural_keys(connection)
+            # Compare normalized incoming rows to existing farms using the same
+            # natural-key logic as the in-memory source deduplication.
             new_records = [record for record in valid_records if record.natural_key not in existing_keys]
             duplicate_in_db = len(valid_records) - len(new_records)
 
