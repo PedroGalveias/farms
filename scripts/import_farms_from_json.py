@@ -504,7 +504,7 @@ def main() -> int:
         return 0
 
     dsn = build_connection_dsn(args)
-    print(f"Connecting to {redact_dsn(dsn)}")
+    print("Connecting to database...")
 
     try:
         import psycopg2
