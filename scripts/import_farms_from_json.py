@@ -128,34 +128,41 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--database-url",
-        default=os.getenv("DATABASE_URL"),
-        help="PostgreSQL connection string. Defaults to DATABASE_URL when set.",
+        default=None,
+        help=(
+            "PostgreSQL connection string. Takes precedence over the split "
+            "database flags when provided explicitly."
+        ),
     )
     parser.add_argument(
         "--db-host",
-        default=os.getenv("POSTGRES_HOST", DEFAULT_DB_HOST),
-        help=f"Database host when --database-url is not provided (default: {DEFAULT_DB_HOST})",
+        default=None,
+        help=(
+            "Database host for the split connection settings. When any split "
+            "database flag is provided, the script builds the DSN from the split "
+            f"settings instead of DATABASE_URL (default host: {DEFAULT_DB_HOST})."
+        ),
     )
     parser.add_argument(
         "--db-port",
         type=int,
-        default=int(os.getenv("POSTGRES_PORT", DEFAULT_DB_PORT)),
-        help=f"Database port when --database-url is not provided (default: {DEFAULT_DB_PORT})",
+        default=None,
+        help=f"Database port for the split connection settings (default: {DEFAULT_DB_PORT}).",
     )
     parser.add_argument(
         "--db-name",
-        default=os.getenv("POSTGRES_DB", DEFAULT_DB_NAME),
-        help=f"Database name when --database-url is not provided (default: {DEFAULT_DB_NAME})",
+        default=None,
+        help=f"Database name for the split connection settings (default: {DEFAULT_DB_NAME}).",
     )
     parser.add_argument(
         "--db-user",
-        default=os.getenv("POSTGRES_USER", DEFAULT_DB_USER),
-        help=f"Database user when --database-url is not provided (default: {DEFAULT_DB_USER})",
+        default=None,
+        help=f"Database user for the split connection settings (default: {DEFAULT_DB_USER}).",
     )
     parser.add_argument(
         "--db-password",
-        default=os.getenv("POSTGRES_PASSWORD", DEFAULT_DB_PASSWORD),
-        help="Database password when --database-url is not provided.",
+        default=None,
+        help="Database password for the split connection settings.",
     )
     parser.add_argument(
         "--dry-run",
@@ -183,6 +190,47 @@ def load_dotenv() -> None:
     dotenv_file = dotenv.find_dotenv(usecwd=True)
     if dotenv_file:
         dotenv.load_dotenv(dotenv_file)
+
+
+def has_explicit_split_db_settings(args: argparse.Namespace) -> bool:
+    # If any split DB flag is provided on the command line, prefer composing the
+    # DSN from the split settings rather than silently falling back to
+    # DATABASE_URL from the shell/.env file.
+    return any(
+        value is not None
+        for value in (
+            args.db_host,
+            args.db_port,
+            args.db_name,
+            args.db_user,
+            args.db_password,
+        )
+    )
+
+
+def resolve_db_setting(explicit_value: str | None, env_var_name: str, default_value: str) -> str:
+    if explicit_value is not None:
+        return explicit_value
+
+    env_value = os.getenv(env_var_name)
+    if env_value is not None:
+        return env_value
+
+    return default_value
+
+
+def resolve_db_port(explicit_port: int | None) -> int:
+    if explicit_port is not None:
+        return explicit_port
+
+    env_port = os.getenv("POSTGRES_PORT")
+    if env_port is None:
+        return DEFAULT_DB_PORT
+
+    try:
+        return int(env_port)
+    except ValueError as exc:
+        raise ValueError("POSTGRES_PORT must be an integer.") from exc
 
 
 def normalize_text(value: object | None) -> str | None:
@@ -388,11 +436,28 @@ def load_locations(path: Path) -> list[dict]:
 
 
 def build_connection_dsn(args: argparse.Namespace) -> str:
+    # Connection precedence:
+    # 1. Explicit --database-url
+    # 2. Explicit split DB flags (--db-host/--db-port/...)
+    # 3. DATABASE_URL from the environment/.env
+    # 4. Split DB env vars, then built-in defaults
     if args.database_url:
         return args.database_url
+
+    if not has_explicit_split_db_settings(args):
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            return database_url
+
+    db_host = resolve_db_setting(args.db_host, "POSTGRES_HOST", DEFAULT_DB_HOST)
+    db_port = resolve_db_port(args.db_port)
+    db_name = resolve_db_setting(args.db_name, "POSTGRES_DB", DEFAULT_DB_NAME)
+    db_user = resolve_db_setting(args.db_user, "POSTGRES_USER", DEFAULT_DB_USER)
+    db_password = resolve_db_setting(args.db_password, "POSTGRES_PASSWORD", DEFAULT_DB_PASSWORD)
+
     return (
-        f"postgresql://{args.db_user}:{args.db_password}"
-        f"@{args.db_host}:{args.db_port}/{args.db_name}"
+        f"postgresql://{db_user}:{db_password}"
+        f"@{db_host}:{db_port}/{db_name}"
     )
 
 
@@ -547,7 +612,12 @@ def main() -> int:
         print("Dry run enabled; no database changes were made.")
         return 0
 
-    dsn = build_connection_dsn(args)
+    try:
+        dsn = build_connection_dsn(args)
+    except ValueError as exc:
+        print(f"Invalid database configuration: {exc}", file=sys.stderr)
+        return 1
+
     print("Connecting to database...")
 
     try:

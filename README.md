@@ -210,6 +210,8 @@ The script:
 - normalizes each row into `name`, `address`, `canton`, `coordinates`, and `categories`
 - skips rows that still fail validation after normalization
 - skips duplicates already present in the source file or in the database
+- resolves the database connection in this order: explicit `--database-url`, explicit split DB flags, env vars, built-in
+  defaults
 - prints a summary of inserted rows and skipped-row reasons
 
 Run a dry run first to see the normalization and skip summary without writing to
