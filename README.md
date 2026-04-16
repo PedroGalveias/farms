@@ -199,6 +199,29 @@ cargo sqlx prepare --workspace --all -- --all-targets
 SKIP_DOCKER=true ./scripts/init_db.sh
 ```
 
+### Import Farm Dataset
+
+Use the importer to normalize the source JSON dataset into the current `farms`
+schema before inserting rows into PostgreSQL.
+
+The script:
+
+- reads the top-level `locations` array from the JSON file
+- normalizes each row into `name`, `address`, `canton`, `coordinates`, and `categories`
+- skips rows that still fail validation after normalization
+- skips duplicates already present in the source file or in the database
+- resolves the database connection in this order: explicit `--database-url`, explicit split DB flags, env vars, built-in
+  defaults
+- prints a summary of inserted rows and skipped-row reasons
+
+Run a dry run first to see the normalization and skip summary without writing to
+the database:
+
+```bash
+python3 scripts/import_farms_from_json.py --json-path /absolute/path/to/farms_with_categorized_products.json --dry-run
+python3 scripts/import_farms_from_json.py --json-path /absolute/path/to/farms_with_categorized_products.json
+```
+
 ## Docker Deployment
 
 Build and run using Docker:
