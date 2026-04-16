@@ -1,6 +1,20 @@
-use crate::configuration::{DatabaseSettings, RedisSettings, Settings};
+use crate::configuration::{
+    DatabaseSettings, RedisSettings, SessionSameSite, SessionSettings, Settings,
+};
 use crate::routes::{authentication, farms, health_check};
-use actix_web::{App, HttpServer, dev::Server, web, web::Data};
+use actix_session::{
+    SessionMiddleware,
+    config::{CookieContentSecurity, PersistentSession, TtlExtensionPolicy},
+    storage::RedisSessionStore,
+};
+use actix_web::{
+    App, HttpServer,
+    cookie::{Key, SameSite, time::Duration},
+    dev::Server,
+    web,
+    web::Data,
+};
+use anyhow::Context;
 use deadpool_redis::{Config, Pool, Runtime};
 use secrecy::ExposeSecret;
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -11,6 +25,8 @@ pub struct Application {
     port: u16,
     server: Server,
 }
+
+/// Builds the application
 impl Application {
     pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
@@ -60,13 +76,80 @@ pub fn get_redis_connection_pool(configuration: &RedisSettings) -> Result<Pool, 
     Ok(pool)
 }
 
+/// Convert the session cookie policy from our application configuration
+/// into the `SameSite` type expected by Actix.
+fn to_same_site(value: &SessionSameSite) -> SameSite {
+    match value {
+        SessionSameSite::Lax => SameSite::Lax,
+        SessionSameSite::Strict => SameSite::Strict,
+        SessionSameSite::None => SameSite::None,
+    }
+}
+
+/// Validate session-related configuration before the server starts.
+///
+/// This is a fail safeguard.
+fn validate_session_settings(settings: &SessionSettings) -> Result<(), anyhow::Error> {
+    if matches!(settings.cookie_same_site, SessionSameSite::None) && !settings.cookie_secure {
+        return Err(anyhow::anyhow!(
+            "SameSite=None requires cookie_secure=true."
+        ));
+    }
+
+    Ok(())
+}
+
+/// Build the Redis-backed session store used by `SessionMiddleware`.
+async fn build_session_store(
+    redis_pool: Pool,
+    settings: &RedisSettings,
+) -> Result<RedisSessionStore, anyhow::Error> {
+    let prefix = settings.session_key_prefix.clone();
+
+    RedisSessionStore::builder_pooled(redis_pool)
+        .cache_keygen(move |session_key| format!("{prefix}:{session_key}"))
+        .build()
+        .await
+        .context("Failed to create Redis-backed session store.")
+}
+
+/// Build the Actix session middleware.
+fn build_session_middleware(
+    store: RedisSessionStore,
+    settings: &SessionSettings,
+) -> SessionMiddleware<RedisSessionStore> {
+    let secret_key = Key::derive_from(settings.secret_key.expose_secret().as_bytes());
+
+    SessionMiddleware::builder(store, secret_key)
+        .cookie_name(settings.cookie_name.clone())
+        .cookie_secure(settings.cookie_secure)
+        // Prevent JavaScript access to the session cookie.
+        .cookie_http_only(settings.cookie_http_only)
+        // Control whether browsers send the cookie on cross-site requests.
+        .cookie_same_site(to_same_site(&settings.cookie_same_site))
+        .cookie_content_security(CookieContentSecurity::Signed)
+        .session_lifecycle(
+            PersistentSession::default()
+                .session_ttl(Duration::seconds(settings.ttl_seconds))
+                .session_ttl_extension_policy(TtlExtensionPolicy::OnEveryRequest),
+        )
+        .build()
+}
+
+/// Build and run the Actix HTTP server.
 pub async fn run(
     listener: TcpListener,
     configuration: Settings,
     db_pool: PgPool,
     redis_pool: Pool,
 ) -> Result<Server, anyhow::Error> {
-    //let redis_store = RedisSessionStore::new_pooled(redis_pool.clone());
+    // Validate session config before booting the app.
+    validate_session_settings(&configuration.session)?;
+
+    // Build the Redis-backed session store once at startup.
+    let session_store = build_session_store(redis_pool.clone(), &configuration.redis).await?;
+    let session_settings = configuration.session.clone();
+
     // Wrap the connection in a smart pointer
     let db_pool = Data::new(db_pool);
     let redis_pool = Data::new(redis_pool);
@@ -76,15 +159,17 @@ pub async fn run(
     let server = HttpServer::new(move || {
         App::new()
             // Middlewares are added using the `wrap` method on `App`
-            //.wrap(SessionMiddleware::new(
-            //    redis_store.clone(),
-            //    secret_key.clone()
-            //))
+            .wrap(build_session_middleware(
+                session_store.clone(),
+                &session_settings,
+            ))
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
             .route("/farms", web::post().to(farms::create))
             .route("/farms", web::get().to(farms::get_all))
             .route("/login", web::post().to(authentication::log_in))
+            .route("/logout", web::post().to(authentication::log_out))
+            .route("/me", web::get().to(authentication::get_me))
             // Get pointer copy and attach it to the application state
             .app_data(db_pool.clone())
             .app_data(configuration.clone())
