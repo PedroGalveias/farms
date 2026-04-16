@@ -199,6 +199,21 @@ cargo sqlx prepare --workspace --all -- --all-targets
 SKIP_DOCKER=true ./scripts/init_db.sh
 ```
 
+### Import Farm Dataset
+
+To import the JSON dataset used in this project into the `farms` table:
+
+```bash
+python3 scripts/import_farms_from_json.py --json-path /absolute/path/to/farms_with_categorized_products.json --dry-run
+python3 scripts/import_farms_from_json.py --json-path /absolute/path/to/farms_with_categorized_products.json
+```
+
+The importer:
+
+- normalizes farm names, addresses, cantons, coordinates, and categories into the current schema
+- skips rows missing required farm data after normalization
+- skips duplicate records already present in the database
+
 ## Docker Deployment
 
 Build and run using Docker:
