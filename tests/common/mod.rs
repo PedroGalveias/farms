@@ -15,7 +15,7 @@ use farms::{
 };
 use once_cell::sync::Lazy;
 use secrecy::SecretString;
-use sqlx::{Connection, Executor, PgConnection, PgPool};
+use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool};
 use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -362,8 +362,10 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to connect to Postgres.");
 
-    connection
-        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
+    let create_db_query = format!(r#"CREATE DATABASE "{}";"#, config.database_name);
+
+    sqlx::query(AssertSqlSafe(create_db_query.as_str()))
+        .execute(&mut connection)
         .await
         .expect("Failed to create database.");
 
