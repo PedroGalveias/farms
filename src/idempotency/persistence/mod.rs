@@ -11,6 +11,7 @@ use crate::{
 use actix_web::HttpResponse;
 use deadpool_redis::Pool;
 use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
 
 mod error;
 mod postgres;
@@ -18,11 +19,23 @@ mod redis;
 
 pub use error::IdempotencyPersistenceError;
 
+fn build_user_scoped_idempotency_key(
+    redis_key_prefix: &str,
+    user_id: Uuid,
+    idempotency_key: &str,
+) -> Result<IdempotencyKey, IdempotencyError> {
+    IdempotencyKey::try_from(format!(
+        "{}:{}:{}",
+        redis_key_prefix, user_id, idempotency_key
+    ))
+    .map_err(|e| IdempotencyError::UnexpectedError(e.into()))
+}
+
 pub async fn save_response(
     redis_pool: &Pool,
     transaction: Transaction<'static, Postgres>,
     idempotency_key: &str,
-    //user_id: Uuid,
+    user_id: Uuid,
     idempotency_settings: &IdempotencySettings,
     http_response: HttpResponse,
 ) -> Result<(HttpResponse, Transaction<'static, Postgres>), IdempotencyError> {
@@ -31,13 +44,11 @@ pub async fn save_response(
         // No idempotency just return the provided response
         IdempotencyEngine::None => Ok((idempotency_data.into_response()?, transaction)),
         IdempotencyEngine::Redis => {
-            let idempotency_key = IdempotencyKey::try_from(format!(
-                "{}:{}", // Add an extra ':{}' when user_id is available
-                idempotency_settings.redis_key_prefix,
-                //user_id.to_string(),
-                idempotency_key
-            ))
-            .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
+            let idempotency_key = build_user_scoped_idempotency_key(
+                &idempotency_settings.redis_key_prefix,
+                user_id,
+                idempotency_key,
+            )?;
             redis::save_response(
                 redis_pool,
                 &idempotency_key,
@@ -73,7 +84,7 @@ pub async fn try_processing(
     redis_pool: &Pool,
     db_pool: &PgPool,
     idempotency_key: &str,
-    //user_id: Uuid,
+    user_id: Uuid,
     idempotency_settings: &IdempotencySettings,
 ) -> Result<IdempotencyNextAction, IdempotencyError> {
     let transaction = db_pool
@@ -84,13 +95,11 @@ pub async fn try_processing(
     match idempotency_settings.engine {
         IdempotencyEngine::None => Ok(IdempotencyNextAction::StartProcessing(transaction)),
         IdempotencyEngine::Redis => {
-            let idempotency_key = IdempotencyKey::try_from(format!(
-                "{}:{}", // Add an extra ':{}' when user_id is available
-                idempotency_settings.redis_key_prefix,
-                //user_id.to_string(),
-                idempotency_key
-            ))
-            .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
+            let idempotency_key = build_user_scoped_idempotency_key(
+                &idempotency_settings.redis_key_prefix,
+                user_id,
+                idempotency_key,
+            )?;
 
             match redis::try_processing(redis_pool, &idempotency_key, idempotency_settings)
                 .await
