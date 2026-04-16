@@ -1,13 +1,14 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use deadpool_redis::{
     Pool,
     redis::{AsyncTypedCommands, RedisError},
 };
-use farms::authentication::change_password;
+use farms::idempotency::{ExpiryOutcome, try_to_execute_task};
 use farms::{
+    authentication::change_password,
     configuration::{
-        DatabaseSettings, EmailClientEngine, LogFormat, LoggingLevel, LoggingSettings, Settings,
-        TelemetrySettings, get_configuration,
+        DatabaseSettings, EmailClientEngine, IdempotencyEngine, LogFormat, LoggingLevel,
+        LoggingSettings, Settings, TelemetrySettings, get_configuration,
     },
     domain::user::Role,
     startup::{Application, get_connection_pool, get_redis_connection_pool},
@@ -292,6 +293,44 @@ impl TestApp {
                 .expect("Missing TextPart."),
         )
     }
+
+    #[allow(dead_code)]
+    pub async fn run_idempotency_cleanup_worker(&self) -> Result<ExpiryOutcome, anyhow::Error> {
+        try_to_execute_task(&self.db_pool).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn create_idempotency_row(
+        &self,
+        user_id: Uuid,
+        idempotency_key: String,
+        expire_at: DateTime<Utc>,
+    ) {
+        let now = Utc::now();
+        sqlx::query!(
+            r#"
+        INSERT INTO idempotency
+            (user_id, key, created_at, expire_at)
+        VALUES ($1, $2, $3, $4)
+        "#,
+            user_id,
+            idempotency_key.as_str(),
+            now,
+            expire_at
+        )
+        .execute(&self.db_pool)
+        .await
+        .expect("Failed to insert idempotency row.");
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_idempotency_rows(&self) -> u64 {
+        sqlx::query("SELECT * FROM idempotency")
+            .execute(&self.db_pool)
+            .await
+            .expect("Failed to query user.")
+            .rows_affected()
+    }
 }
 
 #[allow(dead_code)]
@@ -302,7 +341,7 @@ pub struct StoredUser {
 }
 
 // Launch the application in the background
-pub async fn spawn_app() -> TestApp {
+pub async fn spawn_app(idempotency_engine: IdempotencyEngine) -> TestApp {
     // The first time `initialize` is invoked the code in `TRACING` is executed.
     // All other invocations will instead skip execution.
     Lazy::force(&TRACING);
@@ -323,6 +362,7 @@ pub async fn spawn_app() -> TestApp {
         // Isolate this app's rate-limit counters in the shared Valkey so
         // parallel tests don't inflate each other's per-IP register limit.
         c.registration.rate_limit.key_prefix = format!("rltest:{}", Uuid::new_v4());
+        c.idempotency.engine = idempotency_engine;
 
         c
     };

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM idempotency WHERE expire_at < NOW()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "3f1daef25f03de6c8047d1d73e97bb9c27b866de72074cf433aa523057feefff"
+}

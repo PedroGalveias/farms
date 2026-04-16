@@ -1,8 +1,11 @@
 use crate::helpers::{TestApp, spawn_app};
 use actix_web::http::StatusCode;
+use farms::configuration::IdempotencyEngine;
 use uuid::Uuid;
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, ResponseTemplate};
+use wiremock::{
+    Mock, ResponseTemplate,
+    matchers::{method, path},
+};
 
 const VALID_PASSWORD: &str = "a-long-enough-password";
 
@@ -21,7 +24,7 @@ async fn mount_email_ok(app: &TestApp) {
 
 #[tokio::test]
 async fn register_returns_202_for_valid_input() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
 
     let response = app
@@ -36,7 +39,7 @@ async fn register_returns_202_for_valid_input() {
 
 #[tokio::test]
 async fn register_returns_202_for_existing_email() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
     let body = serde_json::json!({ "email": email, "password": VALID_PASSWORD });
@@ -62,7 +65,7 @@ async fn register_returns_202_for_existing_email() {
 
 #[tokio::test]
 async fn register_returns_400_for_invalid_email() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app
         .post_register(&serde_json::json!({
@@ -76,7 +79,7 @@ async fn register_returns_400_for_invalid_email() {
 
 #[tokio::test]
 async fn register_returns_400_for_short_password() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app
         .post_register(&serde_json::json!({
@@ -90,7 +93,7 @@ async fn register_returns_400_for_short_password() {
 
 #[tokio::test]
 async fn register_stores_pending_user_with_hashed_password() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     // Mixed case to exercise normalisation.
     let email = format!("User-{}@Example.COM", Uuid::new_v4());
@@ -115,7 +118,7 @@ async fn register_stores_pending_user_with_hashed_password() {
 
 #[tokio::test]
 async fn register_stores_token_hash_not_raw_token() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
 
@@ -138,7 +141,7 @@ async fn register_stores_token_hash_not_raw_token() {
 
 #[tokio::test]
 async fn login_rejects_pending_user() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
@@ -162,7 +165,7 @@ async fn login_rejects_pending_user() {
 
 #[tokio::test]
 async fn verify_email_activates_user_and_allows_login() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
@@ -191,7 +194,7 @@ async fn verify_email_activates_user_and_allows_login() {
 
 #[tokio::test]
 async fn verify_email_rejects_used_token() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
@@ -218,7 +221,7 @@ async fn verify_email_rejects_used_token() {
 
 #[tokio::test]
 async fn verify_email_rejects_expired_token() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
@@ -238,7 +241,7 @@ async fn verify_email_rejects_expired_token() {
 
 #[tokio::test]
 async fn verify_email_rejects_unknown_token() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app
         .post_verify_email(&serde_json::json!({ "token": "does-not-exist" }))
@@ -249,7 +252,7 @@ async fn verify_email_rejects_unknown_token() {
 
 #[tokio::test]
 async fn register_is_rate_limited() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let max_requests = app.configuration.registration.rate_limit.max_requests;
     let email = unique_email();

@@ -1,6 +1,6 @@
 use crate::helpers::{TestUser, spawn_app};
 use actix_web::http::StatusCode;
-use farms::domain::user::Role;
+use farms::{configuration::IdempotencyEngine, domain::user::Role};
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -11,7 +11,7 @@ struct LoginResponseBody {
 
 #[tokio::test]
 async fn login_returns_200_and_user_data_for_valid_credentials() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_user();
 
     user.store(&app.db_pool).await;
@@ -36,7 +36,7 @@ async fn login_returns_200_and_user_data_for_valid_credentials() {
 
 #[tokio::test]
 async fn login_returns_200_and_admin_data_for_valid_credentials() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_admin();
     user.store(&app.db_pool).await;
 
@@ -60,7 +60,7 @@ async fn login_returns_200_and_admin_data_for_valid_credentials() {
 
 #[tokio::test]
 async fn login_persists_session_and_me_returns_authenticated_user() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_user();
     user.store(&app.db_pool).await;
 
@@ -87,7 +87,7 @@ async fn login_persists_session_and_me_returns_authenticated_user() {
 
 #[tokio::test]
 async fn login_persists_session_and_me_returns_authenticated_admin() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_admin();
     user.store(&app.db_pool).await;
 
@@ -114,7 +114,7 @@ async fn login_persists_session_and_me_returns_authenticated_admin() {
 
 #[tokio::test]
 async fn me_returns_401_if_the_user_is_not_logged_in() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app.get_me().await;
 
@@ -126,7 +126,7 @@ async fn me_returns_401_if_the_user_is_not_logged_in() {
 
 #[tokio::test]
 async fn logout_clears_session() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_user();
     user.store(&app.db_pool).await;
 
@@ -154,7 +154,7 @@ async fn logout_clears_session() {
 
 #[tokio::test]
 async fn logout_returns_200_even_if_the_user_is_not_logged_in() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app.post_logout().await;
 
@@ -163,7 +163,7 @@ async fn logout_returns_200_even_if_the_user_is_not_logged_in() {
 
 #[tokio::test]
 async fn login_returns_401_for_wrong_password() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_user();
     user.store(&app.db_pool).await;
 
@@ -182,7 +182,7 @@ async fn login_returns_401_for_wrong_password() {
 
 #[tokio::test]
 async fn login_returns_401_for_unknown_email() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app
         .post_login(&serde_json::json!({

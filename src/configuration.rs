@@ -70,6 +70,8 @@ pub struct IdempotencySettings {
     pub ttl_seconds: u64,
     #[serde(default = "default_idempotency_settings_redis_key_prefix")]
     pub redis_key_prefix: String,
+    #[serde(default = "default_idempotency_settings_cleanup_worker_run_interval")]
+    pub cleanup_worker_run_interval: u64,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -188,6 +190,10 @@ fn default_rate_limit_key_prefix() -> String {
 
 fn default_idempotency_settings_ttl_seconds() -> u64 {
     600 // 10 min
+}
+
+fn default_idempotency_settings_cleanup_worker_run_interval() -> u64 {
+    60 // 1 hour
 }
 
 fn default_idempotency_settings_redis_key_prefix() -> String {
