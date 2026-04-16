@@ -20,7 +20,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
 
-#[allow(dead_code)]
 pub struct TestUser {
     pub id: Uuid,
     pub username: String,
@@ -29,7 +28,6 @@ pub struct TestUser {
     pub role: Role,
 }
 
-#[allow(dead_code)]
 impl TestUser {
     pub fn generate_user() -> Self {
         Self::generate_with_role(Role::User)
@@ -107,7 +105,6 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
-#[allow(dead_code)]
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
@@ -115,7 +112,6 @@ pub struct TestApp {
     pub configuration: Settings,
     pub api_client: reqwest::Client,
 }
-#[allow(dead_code)]
 impl TestApp {
     pub async fn get_farms(&self) -> reqwest::Response {
         self.api_client
@@ -140,6 +136,22 @@ impl TestApp {
             .post(format!("{}/login", self.address))
             .header("Content-Type", "application/json")
             .json(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    pub async fn post_logout(&self) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/logout", &self.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    pub async fn get_me(&self) -> reqwest::Response {
+        self.api_client
+            .get(format!("{}/me", &self.address))
             .send()
             .await
             .expect("Failed to execute request.")
@@ -175,6 +187,7 @@ pub async fn spawn_app() -> TestApp {
     let _ = tokio::spawn(application.run_until_stopped());
 
     let api_client = reqwest::Client::builder()
+        .cookie_store(true)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap();
@@ -213,7 +226,6 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
     connection_pool
 }
 
-#[allow(dead_code)]
 pub async fn redis_exists_with_retry(
     connection: &mut deadpool_redis::Connection,
     key: &str,
