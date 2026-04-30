@@ -7,7 +7,7 @@ mod get;
 mod post;
 
 pub use error::FarmError;
-pub use get::get_all;
+pub use get::{get_all, get_by_id};
 pub use post::create;
 
 #[derive(serde::Deserialize, serde::Serialize, sqlx::FromRow)]

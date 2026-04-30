@@ -167,6 +167,7 @@ pub async fn run(
             .route("/health_check", web::get().to(health_check))
             .route("/farms", web::post().to(farms::create))
             .route("/farms", web::get().to(farms::get_all))
+            .route("/farms/{id}", web::get().to(farms::get_by_id))
             .route("/login", web::post().to(authentication::log_in))
             .route("/logout", web::post().to(authentication::log_out))
             .route("/me", web::get().to(authentication::get_me))
