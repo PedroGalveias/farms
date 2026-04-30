@@ -127,6 +127,20 @@ impl TestApp {
     }
 
     #[allow(dead_code)]
+    pub async fn get_farm(&self, farm_id: Uuid) -> reqwest::Response {
+        self.get_farm_by_raw_id(&farm_id.to_string()).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_farm_by_raw_id(&self, farm_id: &str) -> reqwest::Response {
+        self.api_client
+            .get(format!("{}/farms/{}", self.address, farm_id))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    #[allow(dead_code)]
     pub async fn post_farm(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
             .post(format!("{}/farms", &self.address))

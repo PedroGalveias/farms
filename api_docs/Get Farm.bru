@@ -1,0 +1,20 @@
+meta {
+  name: Get Farm
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{URL}}/farms/{{id}}
+  body: none
+  auth: inherit
+}
+
+vars:pre-request {
+  id: 9b67e2ef-2c4b-49c2-92d7-b2a3d88d2b61
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

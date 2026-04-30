@@ -13,6 +13,8 @@ pub enum FarmError {
     // this field is also used as error `source`. this denotes what should be returned as root cause
     #[error(transparent)]
     DuplicateRequestConflict(#[from] IdempotencyError),
+    #[error("Farm not found.")]
+    NotFound,
 }
 impl ResponseError for FarmError {
     fn status_code(&self) -> StatusCode {
@@ -20,6 +22,7 @@ impl ResponseError for FarmError {
             Self::ValidationError(_) => StatusCode::BAD_REQUEST,
             Self::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::DuplicateRequestConflict(_) => StatusCode::CONFLICT,
+            Self::NotFound => StatusCode::NOT_FOUND,
         }
     }
 }
