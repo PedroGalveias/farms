@@ -213,6 +213,68 @@ async fn get_farms_returns_500_when_unexpected_error_occurs() {
 }
 
 #[tokio::test]
+async fn get_farm_returns_200_and_the_request_farm_when_it_exists() {
+    let app = spawn_app().await;
+
+    let requested_farm = create_single_farm(&app).await;
+    let other_farm = create_single_farm(&app).await;
+
+    let response = app.get_farm(requested_farm.id).await;
+
+    assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+
+    let farm: Farm = response
+        .json()
+        .await
+        .expect("Failed to parse response as JSON.");
+
+    assert_eq!(farm.id, requested_farm.id);
+    assert_eq!(farm.name, requested_farm.name);
+    assert_eq!(farm.address, requested_farm.address);
+    assert_eq!(farm.canton, requested_farm.canton);
+    assert_eq!(farm.coordinates, requested_farm.coordinates);
+    assert_eq!(farm.categories, requested_farm.categories);
+
+    assert_ne!(farm.id, other_farm.id);
+}
+
+#[tokio::test]
+async fn get_farm_returns_404_when_farm_does_not_exist() {
+    let app = spawn_app().await;
+
+    let missing_farm_id = Uuid::new_v4();
+
+    let response = app.get_farm(missing_farm_id).await;
+
+    assert_eq!(StatusCode::NOT_FOUND.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
+async fn get_farm_returns_400_when_farm_id_is_not_an_uuid() {
+    let app = spawn_app().await;
+
+    let response = app.get_farm_by_raw_id("not-a-valid-uuid").await;
+
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
+async fn get_farm_returns_500_when_unexpected_error_occurs() {
+    let app = spawn_app().await;
+
+    let farm_id = Uuid::new_v4();
+
+    break_farms_table(&app).await;
+
+    let response = app.get_farm(farm_id).await;
+
+    assert_eq!(
+        StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        response.status().as_u16()
+    );
+}
+
+#[tokio::test]
 async fn create_farm_returns_a_200_for_valid_body_data() {
     // Arrange
     let app = spawn_app().await;
