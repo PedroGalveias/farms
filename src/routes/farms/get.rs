@@ -33,7 +33,7 @@ pub async fn get_farms(pool: &PgPool) -> Result<Vec<Farm>, FarmError> {
             created_at,
             updated_at
         FROM farms
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         "#
     )
     .fetch_all(pool)
