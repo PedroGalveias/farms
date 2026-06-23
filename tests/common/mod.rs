@@ -6,8 +6,8 @@ use deadpool_redis::{
 use farms::authentication::change_password;
 use farms::{
     configuration::{
-        DatabaseSettings, LogFormat, LoggingLevel, LoggingSettings, Settings, TelemetrySettings,
-        get_configuration,
+        DatabaseSettings, EmailClientEngine, LogFormat, LoggingLevel, LoggingSettings, Settings,
+        TelemetrySettings, get_configuration,
     },
     domain::user::Role,
     startup::{Application, get_connection_pool, get_redis_connection_pool},
@@ -287,7 +287,7 @@ impl TestApp {
         };
 
         // Both bodies carry the link; prefer the text body.
-        extract(body["TextBody"].as_str().expect("Missing TextBody."))
+        extract(body["textbody"].as_str().expect("Missing textbody."))
     }
 }
 
@@ -314,6 +314,9 @@ pub async fn spawn_app() -> TestApp {
         c.application.host = "127.0.0.1".to_string();
         // Random available port
         c.application.port = 0;
+        // Exercise the real HTTP email path against the mock server, regardless
+        // of the local default ('log').
+        c.email_client.engine = EmailClientEngine::ZeptoMail;
         c.email_client.base_url = email_server.uri();
         // Isolate this app's rate-limit counters in the shared Valkey so
         // parallel tests don't inflate each other's per-IP register limit.

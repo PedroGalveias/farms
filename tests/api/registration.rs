@@ -13,7 +13,7 @@ fn unique_email() -> String {
 /// Accept any number of outbound emails with a 200 response.
 async fn mount_email_ok(app: &TestApp) {
     Mock::given(method("POST"))
-        .and(path("/email"))
+        .and(path("/v1.1/email"))
         .respond_with(ResponseTemplate::new(200))
         .mount(&app.email_server)
         .await;

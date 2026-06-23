@@ -13,11 +13,13 @@ telemetry:
   endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"  # Set via environment variable
   environment: "production"
 email_client:
-  # Secrets and environment-specific values come from the environment, e.g.
-  # APP_EMAIL_CLIENT__BASE_URL, APP_EMAIL_CLIENT__SENDER_EMAIL,
-  # APP_EMAIL_CLIENT__AUTHORIZATION_TOKEN.
+  # ZeptoMail (EU data centre). Secrets and environment-specific values come
+  # from the environment, e.g. APP_EMAIL_CLIENT__BASE_URL,
+  # APP_EMAIL_CLIENT__SENDER_EMAIL, APP_EMAIL_CLIENT__AUTHORIZATION_TOKEN.
+  # The token is the ZeptoMail "Send Mail" key (sent as `Zoho-enczapikey`).
+  engine: "zeptomail"
   authorization_token: "${EMAIL_CLIENT_AUTHORIZATION_TOKEN}"
-  base_url: "https://api.postmarkapp.com"
+  base_url: "https://api.zeptomail.eu"
   sender_email: "no-reply@farms.app"
   timeout_milliseconds: 10000
 registration:

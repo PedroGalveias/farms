@@ -200,5 +200,5 @@ async fn send_verification_email(
             &format!("Welcome to Farms!\nVisit {verification_link} to verify your email address."),
         )
         .await
-        .context("Failed to send the verification email.")
+        .map_err(|e| e.context("Failed to send the verification email."))
 }

@@ -89,10 +89,62 @@ pub struct TelemetrySettings {
 
 #[derive(serde::Deserialize, Clone)]
 pub struct EmailClientSettings {
+    /// Which email backend to use: real delivery (`zeptomail`) or `log`
+    /// (writes the message to the application log instead of sending it).
+    #[serde(default = "default_email_client_engine")]
+    pub engine: EmailClientEngine,
     pub base_url: String,
     pub sender_email: String,
     pub authorization_token: SecretString,
     pub timeout_milliseconds: u64,
+}
+
+/// Selects how outbound email is delivered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EmailClientEngine {
+    /// Real delivery via the ZeptoMail transactional API.
+    ZeptoMail,
+    /// Local development: log the email instead of sending it.
+    Log,
+}
+
+impl EmailClientEngine {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ZeptoMail => "zeptomail",
+            Self::Log => "log",
+        }
+    }
+}
+
+impl TryFrom<String> for EmailClientEngine {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "zeptomail" => Ok(Self::ZeptoMail),
+            "log" => Ok(Self::Log),
+            other => Err(format!(
+                "'{}' is not a supported email client engine.\
+                Use 'zeptomail' for real delivery or 'log' for local development.",
+                other
+            )),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for EmailClientEngine {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        EmailClientEngine::try_from(s).map_err(serde::de::Error::custom)
+    }
+}
+
+fn default_email_client_engine() -> EmailClientEngine {
+    EmailClientEngine::ZeptoMail
 }
 
 impl EmailClientSettings {

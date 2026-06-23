@@ -156,15 +156,7 @@ pub async fn run(
     let redis_pool = Data::new(redis_pool);
     let configuration = Data::new(configuration);
 
-    let email_client = EmailClient::new(
-        configuration.email_client.base_url.clone(),
-        configuration
-            .email_client
-            .sender()
-            .map_err(|e| anyhow::anyhow!("Invalid sender email: {e}"))?,
-        configuration.email_client.authorization_token.clone(),
-        configuration.email_client.timeout(),
-    )?;
+    let email_client = EmailClient::from_settings(&configuration.email_client)?;
     let email_client = Data::new(email_client);
 
     // Capture the `connection` from the surrounding environment
