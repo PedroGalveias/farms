@@ -12,7 +12,6 @@ services:
       APP_DATABASE__PASSWORD: password
       APP_DATABASE__REQUIRE_SSL: false
       APP_REDIS_URL: "redis://redis:6379"
-      APP_APPLICATION__BASE_URL: "http://localhost:8000"
     ports:
       - "8000:8000"
 
