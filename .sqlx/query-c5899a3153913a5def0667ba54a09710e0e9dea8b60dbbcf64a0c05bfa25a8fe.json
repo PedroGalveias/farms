@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, password_hash, role as \"role: Role\"\n        FROM users\n        WHERE email = $1\n        ",
+  "query": "\n        SELECT id, password_hash, role as \"role: Role\", status as \"status: UserStatus\"\n        FROM users\n        WHERE email_normalised = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,22 @@
             }
           }
         }
+      },
+      {
+        "ordinal": 3,
+        "name": "status: UserStatus",
+        "type_info": {
+          "Custom": {
+            "name": "user_status",
+            "kind": {
+              "Enum": [
+                "PENDING_VERIFICATION",
+                "ACTIVE",
+                "DISABLED"
+              ]
+            }
+          }
+        }
       }
     ],
     "parameters": {
@@ -37,8 +53,9 @@
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "90e0f850bc2486cabd65a2121e10efaf5908f6d1926876f8033cc493a5a4b84c"
+  "hash": "c5899a3153913a5def0667ba54a09710e0e9dea8b60dbbcf64a0c05bfa25a8fe"
 }

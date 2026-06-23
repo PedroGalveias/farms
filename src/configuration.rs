@@ -1,3 +1,4 @@
+use crate::domain::user::{Email, EmailError};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserializer;
 use serde_aux::field_attributes::deserialize_number_from_string;
@@ -12,6 +13,8 @@ pub struct Settings {
     pub idempotency: IdempotencySettings,
     pub logging: LoggingSettings,
     pub telemetry: TelemetrySettings,
+    pub email_client: EmailClientSettings,
+    pub registration: RegistrationSettings,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -82,6 +85,51 @@ pub struct TelemetrySettings {
     pub service_name: String,
     pub endpoint: String,
     pub environment: String,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct EmailClientSettings {
+    pub base_url: String,
+    pub sender_email: String,
+    pub authorization_token: SecretString,
+    pub timeout_milliseconds: u64,
+}
+
+impl EmailClientSettings {
+    /// Validate the configured sender address at startup so a bad value
+    /// fails fast instead of on the first outbound email.
+    pub fn sender(&self) -> Result<Email, EmailError> {
+        Email::parse(self.sender_email.clone())
+    }
+
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.timeout_milliseconds)
+    }
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct RegistrationSettings {
+    #[serde(default = "default_verification_token_ttl_seconds")]
+    pub verification_token_ttl_seconds: i64,
+    /// Public-facing URL embedded in verification links sent by email.
+    pub verification_base_url: String,
+    pub rate_limit: RateLimitSettings,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct RateLimitSettings {
+    pub max_requests: u64,
+    pub window_seconds: u64,
+    #[serde(default = "default_rate_limit_key_prefix")]
+    pub key_prefix: String,
+}
+
+fn default_verification_token_ttl_seconds() -> i64 {
+    86_400 // 24h
+}
+
+fn default_rate_limit_key_prefix() -> String {
+    "rl".to_string()
 }
 
 fn default_idempotency_settings_ttl_seconds() -> u64 {

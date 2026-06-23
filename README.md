@@ -150,15 +150,34 @@ The service currently exposes:
 
 - `GET /health_check`
 - `GET /farms`
+- `GET /farms/{id}`
 - `POST /farms`
+- `POST /register`
+- `POST /verify-email`
 - `POST /login`
+- `POST /logout`
+- `GET /me`
 
-### Authentication Status
+### Authentication & Registration Lifecycle
 
-`POST /login` currently validates credentials and returns the authenticated user's id and role.
+Registration is public and email-verified:
 
-This endpoint does **not** yet create or persist a session, and authenticated route protection is not yet enforced.
-Those concerns are planned for a follow-up iteration.
+1. `POST /register` with `{ "email", "password" }` creates a `USER` account in a
+   `PENDING_VERIFICATION` state and emails a verification link. It always
+   responds `202 Accepted` - the same response for new and already-registered
+   emails - so it cannot be used to enumerate accounts. Passwords must be at
+   least 12 characters; `role` is server-owned and cannot be set by the client.
+2. `POST /verify-email` with `{ "token" }` consumes the (single-use, expiring)
+   token, marks the account `ACTIVE`, and sets `email_verified_at`.
+3. `POST /login` validates credentials and, on success, persists a
+   Valkey-backed session via a signed cookie. **Only `ACTIVE` users can log in**
+    - pending and disabled accounts get the same generic `401` as a wrong
+      password.
+4. `GET /me` returns the current user; `POST /logout` purges the session.
+
+Verification tokens are stored only as SHA-256 hashes; the raw token exists
+solely in the email sent to the user. Registration is rate limited per IP and
+per email using Valkey.
 
 ### Testing
 

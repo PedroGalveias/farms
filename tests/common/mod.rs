@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use deadpool_redis::{
     Pool,
     redis::{AsyncTypedCommands, RedisError},
@@ -57,19 +57,21 @@ impl TestUser {
     }
 
     pub async fn store(&self, pool: &PgPool) {
+        let now = Utc::now();
         sqlx::query!(
             r#"
-            INSERT INTO users (id, username, email, password_hash, role, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5::user_role, $6, $7)
-
-            "#,
+        INSERT INTO users
+            (id, username, email, email_normalised, password_hash, role,
+             status, email_verified_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6::user_role, 'ACTIVE', $7, $7, NULL)
+        "#,
             self.id,
             &self.username,
             &self.email,
+            self.email.trim().to_lowercase(),
             "placeholder-hash",
             self.role as Role,
-            Utc::now(),
-            Option::<DateTime<Utc>>::None,
+            now,
         )
         .execute(pool)
         .await
@@ -115,6 +117,8 @@ pub struct TestApp {
     pub configuration: Settings,
     #[allow(dead_code)]
     pub api_client: reqwest::Client,
+    #[allow(dead_code)]
+    pub email_server: wiremock::MockServer,
 }
 impl TestApp {
     #[allow(dead_code)]
@@ -179,6 +183,120 @@ impl TestApp {
             .await
             .expect("Failed to execute request.")
     }
+
+    #[allow(dead_code)]
+    pub async fn post_register(&self, body: &serde_json::Value) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/register", &self.address))
+            .header("Content-Type", "application/json")
+            .json(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    #[allow(dead_code)]
+    pub async fn post_verify_email(&self, body: &serde_json::Value) -> reqwest::Response {
+        self.api_client
+            .post(format!("{}/verify-email", &self.address))
+            .header("Content-Type", "application/json")
+            .json(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
+    /// Fetch the stored user row by normalised email, if any.
+    #[allow(dead_code)]
+    pub async fn get_user(&self, email: &str) -> Option<StoredUser> {
+        sqlx::query_as!(
+            StoredUser,
+            r#"
+            SELECT email, email_normalised, password_hash, status::text as "status!"
+            FROM users
+            WHERE email_normalised = $1
+            "#,
+            email.trim().to_lowercase(),
+        )
+        .fetch_optional(&self.db_pool)
+        .await
+        .expect("Failed to query user.")
+    }
+
+    /// Fetch the (hashed) verification token row for a user by email, if any.
+    #[allow(dead_code)]
+    pub async fn get_verification_token_hash(&self, email: &str) -> Option<String> {
+        sqlx::query!(
+            r#"
+            SELECT t.token_hash
+            FROM email_verification_tokens t
+            JOIN users u ON u.id = t.user_id
+            WHERE u.email_normalised = $1
+            ORDER BY t.created_at DESC
+            LIMIT 1
+            "#,
+            email.trim().to_lowercase(),
+        )
+        .fetch_optional(&self.db_pool)
+        .await
+        .expect("Failed to query verification token.")
+        .map(|r| r.token_hash)
+    }
+
+    /// Force-expire every verification token for a user (used by tests).
+    #[allow(dead_code)]
+    pub async fn expire_verification_tokens(&self, email: &str) {
+        sqlx::query!(
+            r#"
+            UPDATE email_verification_tokens
+            SET expires_at = now() - interval '1 hour'
+            FROM users
+            WHERE email_verification_tokens.user_id = users.id
+              AND users.email_normalised = $1
+            "#,
+            email.trim().to_lowercase(),
+        )
+        .execute(&self.db_pool)
+        .await
+        .expect("Failed to expire verification tokens.");
+    }
+
+    /// Extract the raw verification token from the last email captured by the
+    /// mock email server. The token only ever exists in the email body and the
+    /// user's inbox - never in the database (which stores only its hash).
+    #[allow(dead_code)]
+    pub async fn verification_token_from_email(&self) -> String {
+        let requests = self
+            .email_server
+            .received_requests()
+            .await
+            .expect("Mock email server captured no requests.");
+        let last = requests.last().expect("No email was sent.");
+        let body: serde_json::Value =
+            serde_json::from_slice(&last.body).expect("Email body was not valid JSON.");
+
+        let extract = |raw: &str| -> String {
+            raw.split("token=")
+                .nth(1)
+                .expect("No token in email body.")
+                .split_whitespace()
+                .next()
+                .expect("Empty token in email body.")
+                .trim_end_matches(['"', '<', '>'])
+                .to_string()
+        };
+
+        // Both bodies carry the link; prefer the text body.
+        extract(body["TextBody"].as_str().expect("Missing TextBody."))
+    }
+}
+
+#[allow(dead_code)]
+pub struct StoredUser {
+    pub email: String,
+    pub email_normalised: String,
+    pub password_hash: String,
+    pub status: String,
 }
 
 // Launch the application in the background
@@ -187,6 +305,8 @@ pub async fn spawn_app() -> TestApp {
     // All other invocations will instead skip execution.
     Lazy::force(&TRACING);
 
+    let email_server = wiremock::MockServer::start().await;
+
     let configuration = {
         let mut c = get_configuration().expect("Failed to read configuration.");
         // Unique DB name for a fresh DB for each test
@@ -194,6 +314,10 @@ pub async fn spawn_app() -> TestApp {
         c.application.host = "127.0.0.1".to_string();
         // Random available port
         c.application.port = 0;
+        c.email_client.base_url = email_server.uri();
+        // Isolate this app's rate-limit counters in the shared Valkey so
+        // parallel tests don't inflate each other's per-IP register limit.
+        c.registration.rate_limit.key_prefix = format!("rltest:{}", Uuid::new_v4());
 
         c
     };
@@ -223,6 +347,7 @@ pub async fn spawn_app() -> TestApp {
             .expect("Failed to create redis pool"),
         configuration,
         api_client,
+        email_server,
     }
 }
 

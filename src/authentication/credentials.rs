@@ -1,5 +1,5 @@
 use crate::authentication::password::{compute_password_hash, verify_password_hash};
-use crate::domain::user::Role;
+use crate::domain::user::{Email, Role, UserStatus};
 use crate::errors::error_chain_fmt;
 use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
@@ -19,6 +19,7 @@ struct StoredCredentials {
     id: Uuid,
     password_hash: SecretString,
     role: Role,
+    status: UserStatus,
 }
 
 #[derive(thiserror::Error)]
@@ -52,12 +53,15 @@ pub async fn validate_credentials(
         .context("Failed to retrieve stored credentials.")
         .map_err(ValidateCredentialsError::UnexpectedError)?;
 
-    let (authenticated_user, expected_password_hash) = match stored_credentials {
+    let (candidate, expected_password_hash) = match stored_credentials {
         Some(credentials) => (
-            Some(AuthenticatedUser {
-                id: credentials.id,
-                role: credentials.role,
-            }),
+            Some((
+                AuthenticatedUser {
+                    id: credentials.id,
+                    role: credentials.role,
+                },
+                credentials.status,
+            )),
             credentials.password_hash,
         ),
         None => (None, DUMMY_PASSWORD_HASH.clone()),
@@ -71,9 +75,15 @@ pub async fn validate_credentials(
 
     verification_result.map_err(ValidateCredentialsError::InvalidCredentials)?;
 
-    authenticated_user.ok_or_else(|| {
-        ValidateCredentialsError::InvalidCredentials(anyhow::anyhow!("Invalid email or password."))
-    })
+    // Status is checked AFTER password verification so that pending, disabled,
+    // unknown-email, and wrong-password all cost the same and return the same
+    // error - no account enumeration via response differences.
+    match candidate {
+        Some((user, UserStatus::Active)) => Ok(user),
+        _ => Err(ValidateCredentialsError::InvalidCredentials(
+            anyhow::anyhow!("Invalid email or password."),
+        )),
+    }
 }
 
 #[tracing::instrument(name = "Change password", skip(password, pool))]
@@ -109,11 +119,11 @@ async fn get_credentials(
 ) -> Result<Option<StoredCredentials>, anyhow::Error> {
     let user = sqlx::query!(
         r#"
-        SELECT id, password_hash, role as "role: Role"
+        SELECT id, password_hash, role as "role: Role", status as "status: UserStatus"
         FROM users
-        WHERE email = $1
+        WHERE email_normalised = $1
         "#,
-        email
+        Email::normalise(email)
     )
     .fetch_optional(pool)
     .await
@@ -122,6 +132,7 @@ async fn get_credentials(
         id: user.id,
         password_hash: SecretString::from(user.password_hash),
         role: user.role,
+        status: user.status,
     });
 
     Ok(user)
@@ -132,13 +143,16 @@ pub async fn get_user_by_id(
     id: Uuid,
     pool: &PgPool,
 ) -> Result<Option<AuthenticatedUser>, anyhow::Error> {
+    // Only active users resolve to a `CurrentUser`. A user disabled after
+    // logging in stops being authenticated on their next request.
     let user = sqlx::query!(
         r#"
         SELECT id, role as "role: Role"
         FROM users
-        WHERE id = $1
+        WHERE id = $1 AND status = $2::user_status
         "#,
-        id
+        id,
+        UserStatus::Active as UserStatus,
     )
     .fetch_optional(pool)
     .await

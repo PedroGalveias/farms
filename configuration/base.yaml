@@ -35,9 +35,14 @@ telemetry:
   service_name: "farms-service"
   endpoint: "http://localhost:4317" #OTLP gRPC endpoint
   environment: "local"
-
-#email_client:
-#  base_url: "localhost"
-#  sender_email: "test@farms.com"
-#  authorization_token: ""
-#  timeout_milliseconds: 10000
+email_client:
+  base_url: "http://localhost:8025" # overridden per environment / by tests
+  sender_email: "no-reply@farms.local"
+  authorization_token: "local-dev-token"
+  timeout_milliseconds: 10000
+registration:
+  verification_token_ttl_seconds: 86400 # 24h
+  verification_base_url: "http://127.0.0.1:8000"
+  rate_limit:
+    max_requests: 5
+    window_seconds: 3600 # 1h

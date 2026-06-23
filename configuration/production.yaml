@@ -12,7 +12,18 @@ telemetry:
   enabled: true
   endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"  # Set via environment variable
   environment: "production"
-
-#email_client:
-#  base_url: "https://api.mailersend.com"
-#  sender_email: "something@farms.com"
+email_client:
+  # Secrets and environment-specific values come from the environment, e.g.
+  # APP_EMAIL_CLIENT__BASE_URL, APP_EMAIL_CLIENT__SENDER_EMAIL,
+  # APP_EMAIL_CLIENT__AUTHORIZATION_TOKEN.
+  authorization_token: "${EMAIL_CLIENT_AUTHORIZATION_TOKEN}"
+  base_url: "https://api.postmarkapp.com"
+  sender_email: "no-reply@farms.app"
+  timeout_milliseconds: 10000
+registration:
+  verification_token_ttl_seconds: 86400  # 24h
+  # Public frontend URL; set via APP_REGISTRATION__VERIFICATION_BASE_URL.
+  verification_base_url: "${REGISTRATION_VERIFICATION_BASE_URL}"
+  rate_limit:
+    max_requests: 5
+    window_seconds: 3600
