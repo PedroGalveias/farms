@@ -13,13 +13,14 @@ telemetry:
   endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"  # Set via environment variable
   environment: "production"
 email_client:
-  # ZeptoMail (EU data centre). Secrets and environment-specific values come
-  # from the environment, e.g. APP_EMAIL_CLIENT__BASE_URL,
-  # APP_EMAIL_CLIENT__SENDER_EMAIL, APP_EMAIL_CLIENT__AUTHORIZATION_TOKEN.
-  # The token is the ZeptoMail "Send Mail" key (sent as `Zoho-enczapikey`).
-  engine: "zeptomail"
-  authorization_token: "${EMAIL_CLIENT_AUTHORIZATION_TOKEN}"
-  base_url: "https://api.zeptomail.eu"
+  # Mailjet Send API (v3.1). Mailjet is an EU provider (Sinch) with EU data
+  # processing and a single global endpoint - there is no regional subdomain.
+  # Credentials come from the environment:
+  #   APP_EMAIL_CLIENT__API_KEY, APP_EMAIL_CLIENT__SECRET_KEY.
+  engine: "mailjet"
+  api_key: "${MAILJET_API_KEY}"
+  secret_key: "${MAILJET_SECRET_KEY}"
+  base_url: "https://api.mailjet.com"
   sender_email: "no-reply@farms.app"
   timeout_milliseconds: 10000
 registration:

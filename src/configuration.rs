@@ -88,21 +88,24 @@ pub struct TelemetrySettings {
 
 #[derive(serde::Deserialize, Clone)]
 pub struct EmailClientSettings {
-    /// Which email backend to use: real delivery (`zeptomail`) or `log`
+    /// Which email backend to use: real delivery (`mailjet`) or `log`
     /// (writes the message to the application log instead of sending it).
     #[serde(default = "default_email_client_engine")]
     pub engine: EmailClientEngine,
     pub base_url: String,
     pub sender_email: String,
-    pub authorization_token: SecretString,
+    /// Mailjet API key (public) and secret key (private). Both are secrets and
+    /// are sent together via HTTP Basic auth.
+    pub api_key: SecretString,
+    pub secret_key: SecretString,
     pub timeout_milliseconds: u64,
 }
 
 /// Selects how outbound email is delivered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmailClientEngine {
-    /// Real delivery via the ZeptoMail transactional API.
-    ZeptoMail,
+    /// Real delivery via the Mailjet Send API.
+    Mailjet,
     /// Local development: log the email instead of sending it.
     Log,
 }
@@ -110,7 +113,7 @@ pub enum EmailClientEngine {
 impl EmailClientEngine {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::ZeptoMail => "zeptomail",
+            Self::Mailjet => "mailjet",
             Self::Log => "log",
         }
     }
@@ -121,11 +124,11 @@ impl TryFrom<String> for EmailClientEngine {
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         match s.to_lowercase().as_str() {
-            "zeptomail" => Ok(Self::ZeptoMail),
+            "mailjet" => Ok(Self::Mailjet),
             "log" => Ok(Self::Log),
             other => Err(format!(
                 "'{}' is not a supported email client engine.\
-                Use 'zeptomail' for real delivery or 'log' for local development.",
+                Use 'mailjet' for real delivery or 'log' for local development.",
                 other
             )),
         }
@@ -143,7 +146,7 @@ impl<'de> serde::Deserialize<'de> for EmailClientEngine {
 }
 
 fn default_email_client_engine() -> EmailClientEngine {
-    EmailClientEngine::ZeptoMail
+    EmailClientEngine::Mailjet
 }
 
 impl EmailClientSettings {

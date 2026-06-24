@@ -286,8 +286,12 @@ impl TestApp {
                 .to_string()
         };
 
-        // Both bodies carry the link; prefer the text body.
-        extract(body["textbody"].as_str().expect("Missing textbody."))
+        // Both parts carry the link; prefer the text part of the first message.
+        extract(
+            body["Messages"][0]["TextPart"]
+                .as_str()
+                .expect("Missing TextPart."),
+        )
     }
 }
 
@@ -316,7 +320,7 @@ pub async fn spawn_app() -> TestApp {
         c.application.port = 0;
         // Exercise the real HTTP email path against the mock server, regardless
         // of the local default ('log').
-        c.email_client.engine = EmailClientEngine::ZeptoMail;
+        c.email_client.engine = EmailClientEngine::Mailjet;
         c.email_client.base_url = email_server.uri();
         // Isolate this app's rate-limit counters in the shared Valkey so
         // parallel tests don't inflate each other's per-IP register limit.

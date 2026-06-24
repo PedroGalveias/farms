@@ -38,11 +38,12 @@ email_client:
   # Default to the 'log' backend: emails are written to the application log
   # instead of being sent, so local development needs no real provider. The
   # verification link appears in the logs. Production overrides this to
-  # 'zeptomail' for real delivery via the ZeptoMail EU API.
+  # 'mailjet' for real delivery via the Mailjet Send API.
   engine: "log"
   base_url: "http://localhost:8025"
   sender_email: "no-reply@farms.local"
-  authorization_token: "local-dev-token"
+  api_key: "local-dev-key"
+  secret_key: "local-dev-secret"
   timeout_milliseconds: 10000
 registration:
   verification_token_ttl_seconds: 86400 # 24h

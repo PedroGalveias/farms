@@ -6,12 +6,12 @@ use secrecy::{ExposeSecret, SecretString};
 
 /// Email transport selected at startup from configuration.
 ///
-/// `ZeptoMail` performs real HTTP delivery against the ZeptoMail API. `Log`
+/// `Mailjet` performs real HTTP delivery against the Mailjet Send API. `Log`
 /// writes the message to the tracing log instead of sending it - this is what
 /// local development uses, so the verification link can be copied straight from
 /// the logs without provisioning a real email provider.
 pub enum EmailClient {
-    ZeptoMail(ZeptoMailClient),
+    Mailjet(MailjetClient),
     Log(LogEmailClient),
 }
 
@@ -19,10 +19,11 @@ impl EmailClient {
     /// Build the email backend chosen in configuration.
     pub fn from_settings(settings: &EmailClientSettings) -> Result<Self, anyhow::Error> {
         match settings.engine {
-            EmailClientEngine::ZeptoMail => Ok(Self::ZeptoMail(ZeptoMailClient::new(
+            EmailClientEngine::Mailjet => Ok(Self::Mailjet(MailjetClient::new(
                 settings.base_url.clone(),
                 settings.sender().context("Invalid sender email address.")?,
-                settings.authorization_token.clone(),
+                settings.api_key.clone(),
+                settings.secret_key.clone(),
                 settings.timeout(),
             )?)),
             EmailClientEngine::Log => Ok(Self::Log(LogEmailClient)),
@@ -38,10 +39,10 @@ impl EmailClient {
         text_content: &str,
     ) -> Result<(), anyhow::Error> {
         match self {
-            Self::ZeptoMail(client) => client
+            Self::Mailjet(client) => client
                 .send_email(recipient, subject, html_content, text_content)
                 .await
-                .context("Failed to send email via ZeptoMail."),
+                .context("Failed to send email via Mailjet."),
             Self::Log(client) => {
                 client
                     .send_email(recipient, subject, html_content, text_content)
@@ -76,19 +77,21 @@ impl LogEmailClient {
     }
 }
 
-/// Real email delivery via the ZeptoMail transactional API.
-pub struct ZeptoMailClient {
+/// Real email delivery via the Mailjet Send API (v3.1).
+pub struct MailjetClient {
     http_client: Client,
     base_url: String,
     sender: Email,
-    authorization_token: SecretString,
+    api_key: SecretString,
+    secret_key: SecretString,
 }
 
-impl ZeptoMailClient {
+impl MailjetClient {
     pub fn new(
         base_url: String,
         sender: Email,
-        authorization_token: SecretString,
+        api_key: SecretString,
+        secret_key: SecretString,
         timeout: std::time::Duration,
     ) -> Result<Self, anyhow::Error> {
         let http_client = Client::builder().timeout(timeout).build()?;
@@ -97,7 +100,8 @@ impl ZeptoMailClient {
             http_client,
             base_url,
             sender,
-            authorization_token,
+            api_key,
+            secret_key,
         })
     }
 
@@ -109,33 +113,30 @@ impl ZeptoMailClient {
         html_content: &str,
         text_content: &str,
     ) -> Result<(), reqwest::Error> {
-        // ZeptoMail's transactional send endpoint.
-        let url = format!("{}/v1.1/email", self.base_url);
+        // Mailjet's v3.1 transactional send endpoint.
+        let url = format!("{}/v3.1/send", self.base_url);
 
         let request_body = SendEmailRequest {
-            from: EmailAddress {
-                address: self.sender.as_ref(),
-            },
-            to: vec![Recipient {
-                email_address: EmailAddress {
-                    address: recipient.as_ref(),
+            messages: vec![Message {
+                from: Contact {
+                    email: self.sender.as_ref(),
                 },
+                to: vec![Contact {
+                    email: recipient.as_ref(),
+                }],
+                subject,
+                text_part: text_content,
+                html_part: html_content,
             }],
-            subject,
-            htmlbody: html_content,
-            textbody: text_content,
         };
 
         self.http_client
             .post(&url)
-            // ZeptoMail authenticates with a "Send Mail" token, sent as
-            // `Authorization: Zoho-enczapikey <token>`.
-            .header(
-                "Authorization",
-                format!(
-                    "Zoho-enczapikey {}",
-                    self.authorization_token.expose_secret()
-                ),
+            // Mailjet authenticates with the API key (public) as the username
+            // and the secret key (private) as the password, via HTTP Basic auth.
+            .basic_auth(
+                self.api_key.expose_secret(),
+                Some(self.secret_key.expose_secret()),
             )
             .json(&request_body)
             .send()
@@ -146,42 +147,50 @@ impl ZeptoMailClient {
     }
 }
 
-/// Request payload for ZeptoMail's `POST /v1.1/email` endpoint.
+/// Request payload for Mailjet's `POST /v3.1/send` endpoint.
 #[derive(serde::Serialize)]
 struct SendEmailRequest<'a> {
-    from: EmailAddress<'a>,
-    to: Vec<Recipient<'a>>,
+    #[serde(rename = "Messages")]
+    messages: Vec<Message<'a>>,
+}
+
+#[derive(serde::Serialize)]
+struct Message<'a> {
+    #[serde(rename = "From")]
+    from: Contact<'a>,
+    #[serde(rename = "To")]
+    to: Vec<Contact<'a>>,
+    #[serde(rename = "Subject")]
     subject: &'a str,
-    htmlbody: &'a str,
-    textbody: &'a str,
+    #[serde(rename = "TextPart")]
+    text_part: &'a str,
+    #[serde(rename = "HTMLPart")]
+    html_part: &'a str,
 }
 
 #[derive(serde::Serialize)]
-struct Recipient<'a> {
-    email_address: EmailAddress<'a>,
-}
-
-#[derive(serde::Serialize)]
-struct EmailAddress<'a> {
-    address: &'a str,
+struct Contact<'a> {
+    #[serde(rename = "Email")]
+    email: &'a str,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use claims::{assert_err, assert_ok};
-    use wiremock::matchers::{any, header, method, path};
+    use wiremock::matchers::{any, header_regex, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_email() -> Email {
         Email::parse("test@farms.local".to_string()).unwrap()
     }
 
-    fn email_client(base_url: String) -> ZeptoMailClient {
-        ZeptoMailClient::new(
+    fn email_client(base_url: String) -> MailjetClient {
+        MailjetClient::new(
             base_url,
             test_email(),
-            SecretString::from("test-token".to_string()),
+            SecretString::from("test-key".to_string()),
+            SecretString::from("test-secret".to_string()),
             std::time::Duration::from_millis(200),
         )
         .unwrap()
@@ -193,8 +202,9 @@ mod tests {
         let client = email_client(server.uri());
 
         Mock::given(method("POST"))
-            .and(path("/v1.1/email"))
-            .and(header("Authorization", "Zoho-enczapikey test-token"))
+            .and(path("/v3.1/send"))
+            // HTTP Basic auth header is present (base64 of "test-key:test-secret").
+            .and(header_regex("Authorization", "^Basic "))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&server)
