@@ -1,9 +1,10 @@
 use crate::helpers::spawn_app;
+use farms::configuration::IdempotencyEngine;
 
 #[tokio::test]
 async fn health_check() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let client = app.api_client;
 
     // Act

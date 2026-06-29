@@ -7,12 +7,14 @@ use fake::{
     faker::{address::de_de::StreetName, name::de_de::Name as FakerName},
 };
 use farms::{
+    configuration::IdempotencyEngine,
     domain::farm::{Address, Canton, Categories, Name, Point},
-    idempotency::{HeaderPair, IdempotencyData, IdempotencyKey},
+    idempotency::{ExpiryOutcome, HeaderPair, IdempotencyData, IdempotencyKey},
     routes::farms::Farm,
 };
 use rand::RngExt;
-use std::collections::HashSet;
+use std::ops::Sub;
+use std::{collections::HashSet, ops::Add, time::Duration};
 use uuid::Uuid;
 
 /// Generate a valid Swiss coordinate within Switzerland boundaries
@@ -132,7 +134,7 @@ async fn log_in_test_user(app: &TestApp, user: &TestUser) {
 #[tokio::test]
 async fn get_farms_returns_empty_list_when_no_farms_exist() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     // Act
     let response = app.get_farms().await;
@@ -151,7 +153,7 @@ async fn get_farms_returns_empty_list_when_no_farms_exist() {
 #[tokio::test]
 async fn get_farms_returns_200_and_a_single_farm() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let created_farm = create_single_farm(&app).await;
 
     // Act
@@ -173,7 +175,7 @@ async fn get_farms_returns_200_and_a_single_farm() {
 #[tokio::test]
 async fn get_farms_returns_200_and_list_of_farms() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let n_farms = 10;
     let created_farms = create_n_farms(&app, n_farms).await;
 
@@ -198,7 +200,7 @@ async fn get_farms_returns_200_and_list_of_farms() {
 #[tokio::test]
 async fn get_farms_returns_500_when_unexpected_error_occurs() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     // Break the DB
     break_farms_table(&app).await;
 
@@ -214,7 +216,7 @@ async fn get_farms_returns_500_when_unexpected_error_occurs() {
 
 #[tokio::test]
 async fn get_farm_returns_200_and_the_request_farm_when_it_exists() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let requested_farm = create_single_farm(&app).await;
     let other_farm = create_single_farm(&app).await;
@@ -240,7 +242,7 @@ async fn get_farm_returns_200_and_the_request_farm_when_it_exists() {
 
 #[tokio::test]
 async fn get_farm_returns_404_when_farm_does_not_exist() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let missing_farm_id = Uuid::new_v4();
 
@@ -251,7 +253,7 @@ async fn get_farm_returns_404_when_farm_does_not_exist() {
 
 #[tokio::test]
 async fn get_farm_returns_400_when_farm_id_is_not_an_uuid() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app.get_farm_by_raw_id("not-a-valid-uuid").await;
 
@@ -260,7 +262,7 @@ async fn get_farm_returns_400_when_farm_id_is_not_an_uuid() {
 
 #[tokio::test]
 async fn get_farm_returns_500_when_unexpected_error_occurs() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let farm_id = Uuid::new_v4();
 
@@ -277,7 +279,7 @@ async fn get_farm_returns_500_when_unexpected_error_occurs() {
 #[tokio::test]
 async fn create_farm_returns_a_200_for_valid_body_data() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
@@ -312,7 +314,7 @@ async fn create_farm_returns_a_200_for_valid_body_data() {
 
 #[tokio::test]
 async fn create_farm_returns_201_for_authenticated_admins() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let user = TestUser::generate_admin();
     log_in_test_user(&app, &user).await;
 
@@ -328,7 +330,7 @@ async fn create_farm_returns_201_for_authenticated_admins() {
 #[tokio::test]
 async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
@@ -352,7 +354,7 @@ async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
 
 #[tokio::test]
 async fn create_farm_returns_401_for_unauthenticated_users() {
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
@@ -369,7 +371,7 @@ async fn create_farm_returns_401_for_unauthenticated_users() {
 #[tokio::test]
 async fn create_farm_returns_a_400_for_invalid_body_data() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
     let test_cases = vec![
         (
             serde_json::json!({
@@ -474,7 +476,7 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
 #[tokio::test]
 async fn create_farm_returns_400_for_invalid_coordinate_format() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let test_cases = vec![
         (
@@ -533,7 +535,7 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
 #[tokio::test]
 async fn create_farm_returns_400_for_coordinates_outside_switzerland() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     // Log in user
     let user = TestUser::generate_user();
@@ -558,7 +560,7 @@ async fn create_farm_returns_400_for_coordinates_outside_switzerland() {
 #[tokio::test]
 async fn create_farm_returns_400_for_invalid_latitude() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     // Log in user
     let user = TestUser::generate_user();
@@ -583,7 +585,7 @@ async fn create_farm_returns_400_for_invalid_latitude() {
 #[tokio::test]
 async fn create_farm_returns_400_for_invalid_longitude() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     // Log in user
     let user = TestUser::generate_user();
@@ -608,7 +610,7 @@ async fn create_farm_returns_400_for_invalid_longitude() {
 #[tokio::test]
 async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::None).await;
 
     let cantons = vec![
         "ZH", "BE", "LU", "UR", "SZ", "OW", "NW", "GL", "ZG", "FR", "SO", "BS", "BL", "SH", "AR",
@@ -643,9 +645,28 @@ async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
 }
 
 #[tokio::test]
-async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db() {
+async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db_redis()
+{
+    create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db(
+        IdempotencyEngine::Redis,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db_postgres()
+ {
+    create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db(
+        IdempotencyEngine::Postgres,
+    )
+    .await;
+}
+
+async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db(
+    idempotency_engine: IdempotencyEngine,
+) {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(idempotency_engine).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
@@ -672,9 +693,27 @@ async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_
 }
 
 #[tokio::test]
-async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db() {
+async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db_redis() {
+    create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db(
+        IdempotencyEngine::Redis,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db_postgres()
+ {
+    create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db(
+        IdempotencyEngine::Postgres,
+    )
+    .await;
+}
+
+async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db(
+    idempotency_engine: IdempotencyEngine,
+) {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(idempotency_engine).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
@@ -713,7 +752,7 @@ async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_f
 #[tokio::test]
 async fn create_farm_creates_redis_key_with_response() {
     // Arrange
-    let app = spawn_app().await;
+    let app = spawn_app(IdempotencyEngine::Redis).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
@@ -772,4 +811,70 @@ async fn create_farm_creates_redis_key_with_response() {
     );
 
     assert_eq!(data.response_body, response.bytes().await.unwrap().to_vec());
+}
+
+#[tokio::test]
+async fn idempotency_worker_will_not_delete_non_expired_keys() {
+    // Arrange
+    let app = spawn_app(IdempotencyEngine::Postgres).await;
+    let user = TestUser::generate_user();
+    let now = Utc::now();
+    user.store(&app.db_pool).await;
+
+    let rows_to_create: u64 = 2;
+    for _ in 0..rows_to_create {
+        app.create_idempotency_row(
+            user.id,
+            Uuid::new_v4().to_string(),
+            now.add(Duration::from_hours(1)),
+        )
+        .await;
+    }
+
+    // Act
+    let outcome = app.run_idempotency_cleanup_worker().await.unwrap();
+
+    // Assert
+    let idempotency_rows = app.get_idempotency_rows().await;
+
+    assert_eq!(idempotency_rows, rows_to_create);
+    assert_eq!(ExpiryOutcome::NothingToDelete, outcome);
+}
+
+#[tokio::test]
+async fn idempotency_worker_will_only_delete_expired_keys() {
+    // Arrange
+    let app = spawn_app(IdempotencyEngine::Postgres).await;
+    let user = TestUser::generate_user();
+    let now = Utc::now();
+    user.store(&app.db_pool).await;
+
+    let expired_rows_to_create: u64 = 2;
+    for _ in 0..expired_rows_to_create {
+        app.create_idempotency_row(
+            user.id,
+            Uuid::new_v4().to_string(),
+            now.sub(Duration::from_hours(1)),
+        )
+        .await;
+    }
+
+    let non_expired_rows_to_create: u64 = 3;
+    for _ in 0..non_expired_rows_to_create {
+        app.create_idempotency_row(
+            user.id,
+            Uuid::new_v4().to_string(),
+            now.add(Duration::from_hours(1)),
+        )
+        .await;
+    }
+
+    // Act
+    let outcome = app.run_idempotency_cleanup_worker().await.unwrap();
+
+    // Assert
+    let idempotency_rows = app.get_idempotency_rows().await;
+
+    assert_eq!(idempotency_rows, non_expired_rows_to_create);
+    assert_eq!(ExpiryOutcome::RowsDeleted(expired_rows_to_create), outcome);
 }

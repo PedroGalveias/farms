@@ -2,10 +2,7 @@ use crate::{
     configuration::{IdempotencyEngine, IdempotencySettings},
     idempotency::{
         IdempotencyData, IdempotencyError, IdempotencyKey,
-        persistence::{
-            //postgres::PostgresPersistenceNextAction,
-            redis::RedisPersistenceNextAction,
-        },
+        persistence::{postgres::PostgresPersistenceNextAction, redis::RedisPersistenceNextAction},
     },
 };
 use actix_web::HttpResponse;
@@ -60,18 +57,21 @@ pub async fn save_response(
 
             Ok((idempotency_data.into_response()?, transaction))
         }
-        // IdempotencyEngine::Postgres => {
-        //     let idempotency_key = IdempotencyKey::try_from(idempotency_key.to_string())
-        //         .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
-        //     let transaction =
-        //         postgres::save_response(transaction, &idempotency_key, user_id, &idempotency_data)
-        //             .await
-        //             .map_err(IdempotencyError::from)?;
-        //
-        //     Ok((idempotency_data.into_response()?, transaction))
-        // }
-        // To enable postgres engine uncomment the match above and comment line bellow
-        _ => Err(IdempotencyError::InvalidEngineError),
+        IdempotencyEngine::Postgres => {
+            let idempotency_key = IdempotencyKey::try_from(idempotency_key.to_string())
+                .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
+            let transaction = postgres::save_response(
+                transaction,
+                &idempotency_key,
+                user_id,
+                idempotency_settings.ttl_seconds,
+                &idempotency_data,
+            )
+            .await
+            .map_err(IdempotencyError::from)?;
+
+            Ok((idempotency_data.into_response()?, transaction))
+        }
     }
 }
 
@@ -117,27 +117,31 @@ pub async fn try_processing(
                 }
             }
         }
-        // IdempotencyEngine::Postgres => {
-        //     let idempotency_key = IdempotencyKey::try_from(idempotency_key.to_string())
-        //         .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
-        //
-        //     match postgres::try_processing(transaction, db_pool, &idempotency_key, user_id)
-        //         .await
-        //         .map_err(|e| match e {
-        //             IdempotencyPersistenceError::ExpectedResponseNotFoundError => {
-        //                 IdempotencyError::ExpectedResponseNotFoundError
-        //             }
-        //             _ => IdempotencyError::from(e),
-        //         })? {
-        //         PostgresPersistenceNextAction::ReturnSavedData(response_data) => Ok(
-        //             IdempotencyNextAction::ReturnSavedResponse(response_data.into_response()?),
-        //         ),
-        //         PostgresPersistenceNextAction::StartProcessing(transaction) => {
-        //             Ok(IdempotencyNextAction::StartProcessing(transaction))
-        //         }
-        //     }
-        // }
-        //To enable postgres engine uncomment the match above and comment line bellow
-        _ => Err(IdempotencyError::InvalidEngineError),
+        IdempotencyEngine::Postgres => {
+            let idempotency_key = IdempotencyKey::try_from(idempotency_key.to_string())
+                .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
+
+            match postgres::try_processing(
+                transaction,
+                db_pool,
+                &idempotency_key,
+                user_id,
+                idempotency_settings.ttl_seconds,
+            )
+            .await
+            .map_err(|e| match e {
+                IdempotencyPersistenceError::ExpectedResponseNotFoundError => {
+                    IdempotencyError::ExpectedResponseNotFoundError
+                }
+                _ => IdempotencyError::from(e),
+            })? {
+                PostgresPersistenceNextAction::ReturnSavedData(response_data) => Ok(
+                    IdempotencyNextAction::ReturnSavedResponse(response_data.into_response()?),
+                ),
+                PostgresPersistenceNextAction::StartProcessing(transaction) => {
+                    Ok(IdempotencyNextAction::StartProcessing(transaction))
+                }
+            }
+        }
     }
 }

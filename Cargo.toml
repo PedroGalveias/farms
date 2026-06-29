@@ -22,11 +22,11 @@ opentelemetry = [
 
 [dependencies]
 # Web framework
-actix-web = "4.12"
-tokio = { version = "1.49", features = ["macros", "rt-multi-thread"] }
+actix-web = "4.14"
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
 
 # Databases
-redis = { version = "1.0", features = [
+redis = { version = "1.3", features = [
     "tokio-rustls-comp",
     "connection-manager",
 ] }
@@ -36,8 +36,9 @@ actix-session = { version = "0.11", features = [
     "redis-session-rustls",
     "redis-pool",
 ] }
-sqlx = { version = "0.8", default-features = false, features = [
-    "runtime-tokio-rustls",
+sqlx = { version = "0.9", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
     "macros",
     "postgres",
     "uuid",
@@ -51,23 +52,23 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde-aux = "4.7"
 rmp-serde = "1.3"
-unicode-segmentation = "1.12.0"
+unicode-segmentation = "1.13.0"
 
 # Logging
 tracing = { version = "0.1", features = ["log"] }
-tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
+tracing-subscriber = { version = ">=0.3.23", features = ["registry", "env-filter"] }
 tracing-bunyan-formatter = "0.3"
 tracing-log = "0.2"
-tracing-actix-web = "0.7"
+tracing-actix-web = ">=0.7.22"
 
 # OpenTelemetry (optional)
-opentelemetry = { version = "0.31", features = ["trace", "metrics"], optional = true }
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace", "metrics"], optional = true }
-opentelemetry-otlp = { version = "0.31", features = ["trace", "metrics", "grpc-tonic"], optional = true }
-tracing-opentelemetry = { version = "0.32", optional = true }
+opentelemetry = { version = "0.32", features = ["trace", "metrics"], optional = true }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "trace", "metrics"], optional = true }
+opentelemetry-otlp = { version = "0.32", features = ["trace", "metrics", "grpc-tonic"], optional = true }
+tracing-opentelemetry = { version = "0.33", optional = true }
 
 # Utilities
-uuid = { version = "1.19", features = ["v4", "serde"] }
+uuid = { version = "1.23", features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = [
     "clock",
     "serde",
@@ -91,7 +92,7 @@ validator = "0.20" # email validation (maintained crate, no handwritten regex)
 
 [dev-dependencies]
 once_cell = "1"
-fake = "4.4"
+fake = "5.1"
 claims = "0.8"
 wiremock = "0.6" # mock the email provider's HTTP API in tests
 

@@ -6,42 +6,90 @@
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Uuid"
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "name: Name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "address: Address",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "address"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "canton: Canton",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "canton"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "coordinates: Point",
-        "type_info": "Point"
+        "type_info": "Point",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "coordinates"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "categories: Categories",
-        "type_info": "TextArray"
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "categories"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "created_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "created_at"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "updated_at",
-        "type_info": "Timestamptz"
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "updated_at"
+          }
+        }
       }
     ],
     "parameters": {
