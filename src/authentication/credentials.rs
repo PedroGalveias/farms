@@ -121,7 +121,7 @@ async fn get_credentials(
         r#"
         SELECT id, password_hash, role as "role: Role", status as "status: UserStatus"
         FROM users
-        WHERE email_normalised = $1
+        WHERE email = $1
         "#,
         Email::normalise(email)
     )

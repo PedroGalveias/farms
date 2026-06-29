@@ -1,12 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO users\n            (id, username, email, email_normalised, password_hash, role, status, created_at)\n        VALUES ($1, $2, $3, $4, $5, $6::user_role, $7::user_status, $8)\n        ",
+  "query": "\n        INSERT INTO users\n            (id, username, email, password_hash, role, status, created_at)\n        VALUES ($1, $2, $3, $4, $5::user_role, $6::user_status, $7)\n        ",
   "describe": {
     "columns": [],
     "parameters": {
       "Left": [
         "Uuid",
-        "Text",
         "Text",
         "Text",
         "Text",
@@ -38,5 +37,5 @@
     },
     "nullable": []
   },
-  "hash": "09abaedf617d6173c56efe639b71cd2636bc71e8c18b21ad708cc7c58616d4af"
+  "hash": "cc7888ef8bd71b4f70f055bece98d9d23abb0525f07af90894a99afd6d0925cf"
 }

@@ -61,7 +61,7 @@ pub async fn register_user(
     let user_id = match insert_pending_user(&mut transaction, &email, password_hash).await {
         Ok(user_id) => user_id,
         // Lost a race with a concurrent registration for the same email:
-        // the unique index on email_normalised fired. Same generic success.
+        // the unique constraint on email fired. Same generic success.
         Err(e) if is_unique_violation(&e) => return Ok(()),
         Err(e) => {
             return Err(anyhow::Error::from(e)
@@ -112,13 +112,10 @@ async fn email_is_registered(
     transaction: &mut Transaction<'_, Postgres>,
     email: &Email,
 ) -> Result<bool, anyhow::Error> {
-    let existing = sqlx::query!(
-        r#"SELECT id FROM users WHERE email_normalised = $1"#,
-        email.normalised(),
-    )
-    .fetch_optional(&mut **transaction)
-    .await
-    .context("Failed to check for an existing user.")?;
+    let existing = sqlx::query!(r#"SELECT id FROM users WHERE email = $1"#, email.as_str(),)
+        .fetch_optional(&mut **transaction)
+        .await
+        .context("Failed to check for an existing user.")?;
 
     Ok(existing.is_some())
 }
@@ -133,14 +130,13 @@ async fn insert_pending_user(
     let query = sqlx::query!(
         r#"
         INSERT INTO users
-            (id, username, email, email_normalised, password_hash, role, status, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6::user_role, $7::user_status, $8)
+            (id, username, email, password_hash, role, status, created_at)
+        VALUES ($1, $2, $3, $4, $5::user_role, $6::user_status, $7)
         "#,
         user_id,
         // Server-generated username: no public availability checks needed yet.
         format!("user-{user_id}"),
         email.as_str(),
-        email.normalised(),
         password_hash.expose_secret(),
         Role::User as Role,
         UserStatus::PendingVerification as UserStatus,

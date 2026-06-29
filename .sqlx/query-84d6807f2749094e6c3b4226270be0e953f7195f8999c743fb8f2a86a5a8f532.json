@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT COUNT(*) as \"count!\" FROM users WHERE email_normalised = $1",
+  "query": "SELECT COUNT(*) as \"count!\" FROM users WHERE email = $1",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       null
     ]
   },
-  "hash": "049636dbdc7a40d126c1875bc28181d098f030c086c4e4a63ad177f19cf978fe"
+  "hash": "84d6807f2749094e6c3b4226270be0e953f7195f8999c743fb8f2a86a5a8f532"
 }

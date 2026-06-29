@@ -61,13 +61,12 @@ impl TestUser {
         sqlx::query!(
             r#"
         INSERT INTO users
-            (id, username, email, email_normalised, password_hash, role,
+            (id, username, email, password_hash, role,
              status, email_verified_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6::user_role, 'ACTIVE', $7, $7, NULL)
+        VALUES ($1, $2, $3, $4, $5::user_role, 'ACTIVE', $6, $6, NULL)
         "#,
             self.id,
             &self.username,
-            &self.email,
             self.email.trim().to_lowercase(),
             "placeholder-hash",
             self.role as Role,
@@ -206,15 +205,15 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    /// Fetch the stored user row by normalised email, if any.
+    /// Fetch the stored user row by (normalised) email, if any.
     #[allow(dead_code)]
     pub async fn get_user(&self, email: &str) -> Option<StoredUser> {
         sqlx::query_as!(
             StoredUser,
             r#"
-            SELECT email, email_normalised, password_hash, status::text as "status!"
+            SELECT email, password_hash, status::text as "status!"
             FROM users
-            WHERE email_normalised = $1
+            WHERE email = $1
             "#,
             email.trim().to_lowercase(),
         )
@@ -231,7 +230,7 @@ impl TestApp {
             SELECT t.token_hash
             FROM email_verification_tokens t
             JOIN users u ON u.id = t.user_id
-            WHERE u.email_normalised = $1
+            WHERE u.email = $1
             ORDER BY t.created_at DESC
             LIMIT 1
             "#,
@@ -252,7 +251,7 @@ impl TestApp {
             SET expires_at = now() - interval '1 hour'
             FROM users
             WHERE email_verification_tokens.user_id = users.id
-              AND users.email_normalised = $1
+              AND users.email = $1
             "#,
             email.trim().to_lowercase(),
         )
@@ -298,7 +297,6 @@ impl TestApp {
 #[allow(dead_code)]
 pub struct StoredUser {
     pub email: String,
-    pub email_normalised: String,
     pub password_hash: String,
     pub status: String,
 }

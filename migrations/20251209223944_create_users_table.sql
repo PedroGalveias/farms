@@ -11,8 +11,9 @@ CREATE TABLE users
     id                uuid        NOT NULL,
     PRIMARY KEY (id),
     username          TEXT        NOT NULL UNIQUE,
+    -- Stored already normalised (trimmed + lowercased) by the application's
+    -- Email type, so this single column carries identity, uniqueness, and lookups.
     email             TEXT        NOT NULL UNIQUE,
-    email_normalised  TEXT        NOT NULL UNIQUE,
     password_hash     TEXT        NOT NULL,
     role              user_role   NOT NULL DEFAULT 'USER',
     status            user_status NOT NULL DEFAULT 'PENDING_VERIFICATION',

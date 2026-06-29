@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT email, email_normalised, password_hash, status::text as \"status!\"\n            FROM users\n            WHERE email_normalised = $1\n            ",
+  "query": "\n            SELECT email, password_hash, status::text as \"status!\"\n            FROM users\n            WHERE email = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -10,16 +10,11 @@
       },
       {
         "ordinal": 1,
-        "name": "email_normalised",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 2,
         "name": "password_hash",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "status!",
         "type_info": "Text"
       }
@@ -32,9 +27,8 @@
     "nullable": [
       false,
       false,
-      false,
       null
     ]
   },
-  "hash": "94fc914c2c062b5191d7f4235fb660dd1c412d0bc40c201d6fa3544e1e3f7172"
+  "hash": "b034208f7960c39868219b3ba4401bac1056cd890171162fa0c036bc7b7e9ba4"
 }

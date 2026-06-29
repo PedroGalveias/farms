@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, password_hash, role as \"role: Role\", status as \"status: UserStatus\"\n        FROM users\n        WHERE email_normalised = $1\n        ",
+  "query": "\n        SELECT id, password_hash, role as \"role: Role\", status as \"status: UserStatus\"\n        FROM users\n        WHERE email = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -57,5 +57,5 @@
       false
     ]
   },
-  "hash": "c5899a3153913a5def0667ba54a09710e0e9dea8b60dbbcf64a0c05bfa25a8fe"
+  "hash": "504b877b99ed876d6ece1fdb65844de1d2bcff293498614095eef4792eb8fdfa"
 }

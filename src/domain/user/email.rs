@@ -18,9 +18,11 @@ pub enum EmailError {
 }
 
 impl Email {
-    /// Parse an email string into a validated `Email`.
+    /// Parse an email string into a validated, normalised `Email`.
     ///
-    /// Trims surrounding whitespace, rejects empty/oversized/invalid values.
+    /// Trims surrounding whitespace, rejects empty/oversized/invalid values, and
+    /// stores the canonical (lowercased) form. The value held by `Email` is
+    /// therefore always normalised - it is what gets persisted and looked up.
     pub fn parse(s: String) -> Result<Email, EmailError> {
         let trimmed = s.trim();
 
@@ -34,17 +36,16 @@ impl Email {
             return Err(EmailError::Invalid);
         }
 
-        Ok(Self(trimmed.to_string()))
+        Ok(Self(Self::normalise(trimmed)))
     }
 
     /// The canonical form used for uniqueness checks and lookups.
     /// This is THE one place email normalisation is defined.
+    ///
+    /// Used directly when canonicalising an untrusted string for a lookup
+    /// (e.g. the raw email from a login request).
     pub fn normalise(raw: &str) -> String {
         raw.trim().to_lowercase()
-    }
-
-    pub fn normalised(&self) -> String {
-        Self::normalise(&self.0)
     }
 
     pub fn as_str(&self) -> &str {
@@ -111,8 +112,8 @@ mod tests {
     }
 
     #[test]
-    fn normalised_matches_normalise() {
+    fn parse_stores_the_normalised_form() {
         let email = Email::parse("Person@Example.COM".to_string()).unwrap();
-        assert_eq!("person@example.com", email.normalised());
+        assert_eq!("person@example.com", email.as_str());
     }
 }

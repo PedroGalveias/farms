@@ -50,7 +50,7 @@ async fn register_returns_202_for_existing_email() {
 
     // Only one user row exists for that email.
     let count = sqlx::query!(
-        r#"SELECT COUNT(*) as "count!" FROM users WHERE email_normalised = $1"#,
+        r#"SELECT COUNT(*) as "count!" FROM users WHERE email = $1"#,
         email.to_lowercase(),
     )
     .fetch_one(&app.db_pool)
@@ -103,8 +103,8 @@ async fn register_stores_pending_user_with_hashed_password() {
 
     let stored = app.get_user(&email).await.expect("User was not stored.");
     assert_eq!("PENDING_VERIFICATION", stored.status);
-    assert_eq!(email.to_lowercase(), stored.email_normalised);
-    assert_eq!(email, stored.email); // original casing preserved
+    // The email is stored already normalised (trimmed + lowercased).
+    assert_eq!(email.to_lowercase(), stored.email);
     assert!(
         stored.password_hash.starts_with("$argon2id$"),
         "Password should be stored as an Argon2id hash, got: {}",

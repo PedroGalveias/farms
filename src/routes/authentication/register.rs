@@ -91,7 +91,7 @@ async fn enforce_rate_limits(
     let prefix = &limits.key_prefix;
     let keys = [
         format!("{prefix}:register:ip:{client_ip}"),
-        format!("{prefix}:register:email:{}", email.normalised()),
+        format!("{prefix}:register:email:{}", email.as_str()),
     ];
 
     for key in keys {
