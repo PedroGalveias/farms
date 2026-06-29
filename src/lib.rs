@@ -7,3 +7,5 @@ pub mod startup;
 pub mod telemetry;
 
 pub mod authentication;
+mod email_client;
+mod rate_limit;

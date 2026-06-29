@@ -16,9 +16,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Log startup information
     tracing::info!(
-        "Starting {} on {}",
+        "Starting {} on {}:{}",
         configuration.telemetry.service_name,
-        configuration.application.base_url,
+        configuration.application.host,
+        configuration.application.port,
     );
     tracing::info!(
         environment = %configuration.telemetry.environment,

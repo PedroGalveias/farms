@@ -1,4 +1,4 @@
-use crate::helpers::{TestApp, redis_exists_with_retry, spawn_app};
+use crate::helpers::{TestApp, TestUser, redis_exists_with_retry, spawn_app};
 use actix_web::http::StatusCode;
 use chrono::Utc;
 use deadpool_redis::redis::AsyncCommands;
@@ -116,6 +116,19 @@ async fn create_n_farms(app: &TestApp, n: usize) -> Vec<Farm> {
     farms
 }
 
+async fn log_in_test_user(app: &TestApp, user: &TestUser) {
+    user.store(&app.db_pool).await;
+
+    let response = app
+        .post_login(&serde_json::json!({
+            "email": user.email,
+            "password": user.password
+        }))
+        .await;
+
+    assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+}
+
 #[tokio::test]
 async fn get_farms_returns_empty_list_when_no_farms_exist() {
     // Arrange
@@ -200,11 +213,77 @@ async fn get_farms_returns_500_when_unexpected_error_occurs() {
 }
 
 #[tokio::test]
+async fn get_farm_returns_200_and_the_request_farm_when_it_exists() {
+    let app = spawn_app().await;
+
+    let requested_farm = create_single_farm(&app).await;
+    let other_farm = create_single_farm(&app).await;
+
+    let response = app.get_farm(requested_farm.id).await;
+
+    assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+
+    let farm: Farm = response
+        .json()
+        .await
+        .expect("Failed to parse response as JSON.");
+
+    assert_eq!(farm.id, requested_farm.id);
+    assert_eq!(farm.name, requested_farm.name);
+    assert_eq!(farm.address, requested_farm.address);
+    assert_eq!(farm.canton, requested_farm.canton);
+    assert_eq!(farm.coordinates, requested_farm.coordinates);
+    assert_eq!(farm.categories, requested_farm.categories);
+
+    assert_ne!(farm.id, other_farm.id);
+}
+
+#[tokio::test]
+async fn get_farm_returns_404_when_farm_does_not_exist() {
+    let app = spawn_app().await;
+
+    let missing_farm_id = Uuid::new_v4();
+
+    let response = app.get_farm(missing_farm_id).await;
+
+    assert_eq!(StatusCode::NOT_FOUND.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
+async fn get_farm_returns_400_when_farm_id_is_not_an_uuid() {
+    let app = spawn_app().await;
+
+    let response = app.get_farm_by_raw_id("not-a-valid-uuid").await;
+
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
+async fn get_farm_returns_500_when_unexpected_error_occurs() {
+    let app = spawn_app().await;
+
+    let farm_id = Uuid::new_v4();
+
+    break_farms_table(&app).await;
+
+    let response = app.get_farm(farm_id).await;
+
+    assert_eq!(
+        StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        response.status().as_u16()
+    );
+}
+
+#[tokio::test]
 async fn create_farm_returns_a_200_for_valid_body_data() {
     // Arrange
     let app = spawn_app().await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
+
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
 
     // Act
     let body = farm_to_json(&farm, idempotency_key);
@@ -232,11 +311,31 @@ async fn create_farm_returns_a_200_for_valid_body_data() {
 }
 
 #[tokio::test]
+async fn create_farm_returns_201_for_authenticated_admins() {
+    let app = spawn_app().await;
+    let user = TestUser::generate_admin();
+    log_in_test_user(&app, &user).await;
+
+    let farm = generate_farm();
+    let idempotency_key = Uuid::new_v4();
+    let body = farm_to_json(&farm, idempotency_key);
+
+    let response = app.post_farm(&body).await;
+
+    assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
 async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
     // Arrange
     let app = spawn_app().await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
+
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     // Break the DB
     break_farms_table(&app).await;
 
@@ -247,6 +346,22 @@ async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
     // Assert
     assert_eq!(
         StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        response.status().as_u16()
+    );
+}
+
+#[tokio::test]
+async fn create_farm_returns_401_for_unauthenticated_users() {
+    let app = spawn_app().await;
+    let farm = generate_farm();
+    let idempotency_key = Uuid::new_v4();
+
+    let body = farm_to_json(&farm, idempotency_key);
+
+    let response = app.post_farm(&body).await;
+
+    assert_eq!(
+        StatusCode::UNAUTHORIZED.as_u16(),
         response.status().as_u16()
     );
 }
@@ -338,6 +453,10 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
         ),
     ];
 
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     for (invalid_body, error_message) in test_cases {
         // Act
         let response = app.post_farm(&invalid_body).await;
@@ -393,6 +512,10 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
         ),
     ];
 
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     for (invalid_body, error_message) in test_cases {
         // Act
         let response = app.post_farm(&invalid_body).await;
@@ -411,6 +534,10 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
 async fn create_farm_returns_400_for_coordinates_outside_switzerland() {
     // Arrange
     let app = spawn_app().await;
+
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
 
     let body = serde_json::json!({
         "name": "Berlin Farm",
@@ -433,6 +560,10 @@ async fn create_farm_returns_400_for_invalid_latitude() {
     // Arrange
     let app = spawn_app().await;
 
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     let body = serde_json::json!({
         "name": "Test Farm",
         "address": "Test Address",
@@ -453,6 +584,10 @@ async fn create_farm_returns_400_for_invalid_latitude() {
 async fn create_farm_returns_400_for_invalid_longitude() {
     // Arrange
     let app = spawn_app().await;
+
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
 
     let body = serde_json::json!({
         "name": "Test Farm",
@@ -479,6 +614,10 @@ async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
         "ZH", "BE", "LU", "UR", "SZ", "OW", "NW", "GL", "ZG", "FR", "SO", "BS", "BL", "SH", "AR",
         "AI", "SG", "GR", "AG", "TG", "TI", "VD", "VS", "NE", "GE", "JU",
     ];
+
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
 
     for canton in cantons {
         let body = serde_json::json!({
@@ -510,6 +649,10 @@ async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     // Act
     let body = farm_to_json(&farm, idempotency_key);
 
@@ -534,6 +677,10 @@ async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_f
     let app = spawn_app().await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
+
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
 
     // Act
     let body = farm_to_json(&farm, idempotency_key);
@@ -570,6 +717,10 @@ async fn create_farm_creates_redis_key_with_response() {
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
+    // Log in user
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     // Act
     let body = farm_to_json(&farm, idempotency_key);
 
@@ -579,9 +730,8 @@ async fn create_farm_creates_redis_key_with_response() {
     assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
 
     let idempotency_key = IdempotencyKey::try_from(format!(
-        "{}:{}",
-        app.configuration.idempotency.redis_key_prefix,
-        idempotency_key.to_string()
+        "{}:{}:{}",
+        app.configuration.idempotency.redis_key_prefix, user.id, idempotency_key
     ))
     .expect("Failed to parse idempotency key");
     let mut redis_connection = app

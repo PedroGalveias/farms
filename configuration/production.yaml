@@ -2,6 +2,9 @@ application:
   host: 0.0.0.0
 database:
   require_ssl: true
+session:
+  secret_key: "${SESSION_SECRET_KEY}"
+  cookie_secure: true
 logging:
   level: "info"
   format: "bunyan"  # Bunyan-formatted JSON for production log aggregation
@@ -9,7 +12,21 @@ telemetry:
   enabled: true
   endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"  # Set via environment variable
   environment: "production"
-
-#email_client:
-#  base_url: "https://api.mailersend.com"
-#  sender_email: "something@farms.com"
+email_client:
+  # Mailjet Send API (v3.1). Mailjet is an EU provider (Sinch) with EU data
+  # processing and a single global endpoint - there is no regional subdomain.
+  # Credentials come from the environment:
+  #   APP_EMAIL_CLIENT__API_KEY, APP_EMAIL_CLIENT__SECRET_KEY.
+  engine: "mailjet"
+  api_key: "${MAILJET_API_KEY}"
+  secret_key: "${MAILJET_SECRET_KEY}"
+  base_url: "https://api.mailjet.com"
+  sender_email: "no-reply@farms.app"
+  timeout_milliseconds: 10000
+registration:
+  verification_token_ttl_seconds: 86400  # 24h
+  # Public frontend URL; set via APP_REGISTRATION__VERIFICATION_BASE_URL.
+  verification_base_url: "${REGISTRATION_VERIFICATION_BASE_URL}"
+  rate_limit:
+    max_requests: 5
+    window_seconds: 3600

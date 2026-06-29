@@ -12,7 +12,6 @@ services:
       APP_DATABASE__PASSWORD: password
       APP_DATABASE__REQUIRE_SSL: false
       APP_REDIS_URL: "redis://redis:6379"
-      APP_APPLICATION__BASE_URL: "http://localhost:8000"
     ports:
       - "8000:8000"
 
@@ -31,7 +30,10 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # postgres:18 stores data in a major-version subdirectory and expects the
+      # volume mounted at /var/lib/postgresql (not /.../data), otherwise it
+      # refuses to start. See docker-library/postgres#37.
+      - postgres-data:/var/lib/postgresql
 
   redis:
     image: valkey/valkey:9-alpine

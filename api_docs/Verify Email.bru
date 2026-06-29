@@ -1,0 +1,41 @@
+meta {
+  name: Verify Email
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{URL}}/verify-email
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "token": "paste-the-raw-token-from-the-verification-email"
+  }
+}
+
+docs {
+  Consumes an email verification token sent during registration.
+
+  On success the user's account becomes `ACTIVE`, `email_verified_at` is set, and
+  the token is marked used. Tokens are single-use and expire (24h by default).
+
+  Responses:
+  - 200 OK: the token was valid; the account is now active and can log in.
+  - 400 Bad Request: the token is unknown, expired, or already used. The response
+    is intentionally generic and does not reveal which of these applies.
+
+  The raw token only ever exists in the email sent to the user; the database
+  stores only its SHA-256 hash.
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
