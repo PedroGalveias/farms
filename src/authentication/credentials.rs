@@ -1,26 +1,89 @@
 use crate::authentication::password::{compute_password_hash, verify_password_hash};
+use crate::domain::user::{Email, Role, UserStatus};
+use crate::errors::error_chain_fmt;
 use crate::telemetry::spawn_blocking_with_tracing;
 use anyhow::Context;
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
+use std::fmt::{Debug, Formatter};
+use std::sync::LazyLock;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthenticatedUser {
+    pub id: Uuid,
+    pub role: Role,
+}
+
+struct StoredCredentials {
+    id: Uuid,
+    password_hash: SecretString,
+    role: Role,
+    status: UserStatus,
+}
+
+#[derive(thiserror::Error)]
+pub enum ValidateCredentialsError {
+    #[error("Invalid email or password")]
+    InvalidCredentials(#[source] anyhow::Error),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl Debug for ValidateCredentialsError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+// This static value is used when the email does not exist. This is used to reduce timing side channels.
+static DUMMY_PASSWORD_HASH: LazyLock<SecretString> = LazyLock::new(|| {
+    compute_password_hash(SecretString::from("dummy-pw".to_string()))
+        .expect("Failed to compute dummy password hash.")
+});
 
 #[tracing::instrument(name = "Validate credentials", skip(email, password, pool))]
 pub async fn validate_credentials(
     email: &str,
     password: SecretString,
     pool: &PgPool,
-) -> Result<Uuid, anyhow::Error> {
+) -> Result<AuthenticatedUser, ValidateCredentialsError> {
     let stored_credentials = get_credentials(email, pool)
         .await
-        .context("Failed to retrieve stored credentials.")?;
+        .context("Failed to retrieve stored credentials.")
+        .map_err(ValidateCredentialsError::UnexpectedError)?;
 
-    let (id, password_hash) =
-        stored_credentials.ok_or_else(|| anyhow::anyhow!("Invalid email or password."))?;
+    let (candidate, expected_password_hash) = match stored_credentials {
+        Some(credentials) => (
+            Some((
+                AuthenticatedUser {
+                    id: credentials.id,
+                    role: credentials.role,
+                },
+                credentials.status,
+            )),
+            credentials.password_hash,
+        ),
+        None => (None, DUMMY_PASSWORD_HASH.clone()),
+    };
 
-    verify_password_hash(password_hash, password).context("Invalid password.")?;
+    let verification_result =
+        spawn_blocking_with_tracing(move || verify_password_hash(expected_password_hash, password))
+            .await
+            .context("Failed to spawn blocking task.")
+            .map_err(ValidateCredentialsError::UnexpectedError)?;
 
-    Ok(id)
+    verification_result.map_err(ValidateCredentialsError::InvalidCredentials)?;
+
+    // Status is checked AFTER password verification so that pending, disabled,
+    // unknown-email, and wrong-password all cost the same and return the same
+    // error - no account enumeration via response differences.
+    match candidate {
+        Some((user, UserStatus::Active)) => Ok(user),
+        _ => Err(ValidateCredentialsError::InvalidCredentials(
+            anyhow::anyhow!("Invalid email or password."),
+        )),
+    }
 }
 
 #[tracing::instrument(name = "Change password", skip(password, pool))]
@@ -53,19 +116,51 @@ pub async fn change_password(
 async fn get_credentials(
     email: &str,
     pool: &PgPool,
-) -> Result<Option<(Uuid, SecretString)>, anyhow::Error> {
+) -> Result<Option<StoredCredentials>, anyhow::Error> {
     let user = sqlx::query!(
         r#"
-        SELECT id, password_hash
+        SELECT id, password_hash, role as "role: Role", status as "status: UserStatus"
         FROM users
         WHERE email = $1
         "#,
-        email
+        Email::normalise(email)
     )
     .fetch_optional(pool)
     .await
     .context("Failed to retrieve user credentials.")?
-    .map(|user| (user.id, SecretString::from(user.password_hash)));
+    .map(|user| StoredCredentials {
+        id: user.id,
+        password_hash: SecretString::from(user.password_hash),
+        role: user.role,
+        status: user.status,
+    });
+
+    Ok(user)
+}
+
+#[tracing::instrument(name = "Get user by id", skip(pool))]
+pub async fn get_user_by_id(
+    id: Uuid,
+    pool: &PgPool,
+) -> Result<Option<AuthenticatedUser>, anyhow::Error> {
+    // Only active users resolve to a `CurrentUser`. A user disabled after
+    // logging in stops being authenticated on their next request.
+    let user = sqlx::query!(
+        r#"
+        SELECT id, role as "role: Role"
+        FROM users
+        WHERE id = $1 AND status = $2::user_status
+        "#,
+        id,
+        UserStatus::Active as UserStatus,
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed to retrieve user by id.")?
+    .map(|user| AuthenticatedUser {
+        id: user.id,
+        role: user.role,
+    });
 
     Ok(user)
 }

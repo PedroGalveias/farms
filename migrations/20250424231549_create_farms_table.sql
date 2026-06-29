@@ -15,3 +15,5 @@ CREATE TABLE farms
 -- Add comment explaining the coordinate format
 COMMENT
 ON COLUMN farms.coordinates IS 'Geographic coordinates as POINT(longitude, latitude)';
+
+CREATE INDEX farms_created_at_id_desc_idx ON farms (created_at DESC, id DESC);

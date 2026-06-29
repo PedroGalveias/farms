@@ -78,8 +78,20 @@ anyhow = "1.0"
 rand = "0.10"
 argon2 = { version = "0.5", features = ["std"] }
 
+# HTTP client for the email provider (rustls to match the rest of the stack).
+# Also used by the integration tests, hence the `cookies` feature.
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "cookies",
+    "rustls",
+] }
+sha2 = "0.11"      # SHA-256 for verification token hashing
+hex = "0.4"        # hex-encode token hashes for storage
+validator = "0.20" # email validation (maintained crate, no handwritten regex)
+
 [dev-dependencies]
 once_cell = "1"
 fake = "4.4"
 claims = "0.8"
-reqwest = { version = "0.13", features = ["json"] }
+wiremock = "0.6" # mock the email provider's HTTP API in tests
+

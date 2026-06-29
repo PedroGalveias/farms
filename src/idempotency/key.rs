@@ -70,18 +70,13 @@ mod tests {
 
     #[test]
     fn valid_key_with_prefix_is_accepted() {
-        let key = format!("{}:{}", "idem", Uuid::new_v4().to_string());
+        let key = format!("{}:{}", "idem", Uuid::new_v4());
         assert_ok!(IdempotencyKey::try_from(key));
     }
 
     #[test]
     fn valid_key_with_prefix_and_user_id_is_accepted() {
-        let key = format!(
-            "{}:{}:{}",
-            "idem",
-            Uuid::new_v4().to_string(),
-            Uuid::new_v4().to_string()
-        );
+        let key = format!("{}:{}:{}", "idem", Uuid::new_v4(), Uuid::new_v4());
         assert_ok!(IdempotencyKey::try_from(key));
     }
 }

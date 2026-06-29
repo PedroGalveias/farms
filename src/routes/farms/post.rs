@@ -1,4 +1,5 @@
 use crate::{
+    authentication::CurrentUser,
     configuration::Settings,
     domain::farm::{Address, Canton, Categories, Name, Point},
     idempotency::{IdempotencyError, IdempotencyNextAction, save_response, try_processing},
@@ -27,6 +28,7 @@ pub struct FormData {
     skip(body, pool, redis_pool, configuration)
 )]
 pub async fn create(
+    current_user: CurrentUser,
     body: web::Json<FormData>,
     pool: web::Data<PgPool>,
     redis_pool: web::Data<Pool>,
@@ -67,6 +69,7 @@ pub async fn create(
         &redis_pool,
         &pool,
         body.idempotency_key.as_str(),
+        current_user.id,
         &configuration.idempotency,
     )
     .await
@@ -95,6 +98,7 @@ pub async fn create(
         &redis_pool,
         transaction,
         body.idempotency_key.as_str(),
+        current_user.id,
         &configuration.idempotency,
         response,
     )

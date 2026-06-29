@@ -1,11 +1,15 @@
 # Farms
 
-A Rust web service for managing farm data in Switzerland, built with Actix Web and PostgreSQL.
+A Rust web service for managing farm data in Switzerland, built with Actix Web, PostgreSQL, and Redis/Valkey-backed
+infrastructure.
 
 ## Features
 
 - **RESTful API** for creating and retrieving farm information
+- **Role-aware authentication** with credential validation against PostgreSQL
+- **Login endpoint** returning authenticated user identity and role
 - **PostgreSQL database** with SQLx for type-safe queries
+- **Redis/Valkey integration** for idempotency support and future session storage
 - **Structured logging** with tracing and bunyan formatting
 - **Docker support** for containerized deployment
 - **Environment-based configuration** (local, production)
@@ -16,6 +20,7 @@ A Rust web service for managing farm data in Switzerland, built with Actix Web a
 
 - **Web Framework**: Actix Web 4.12 with async/await
 - **Database**: PostgreSQL with SQLx 0.8 (compile-time verified queries)
+- **Cache / Session Infrastructure**: Redis or Valkey via deadpool-redis
 - **Async Runtime**: Tokio with multi-threading
 - **Logging**: tracing, tracing-subscriber, tracing-actix-web
 - **Serialization**: serde, serde_json, rmp-serde
@@ -31,52 +36,61 @@ farms/
 │   ├── configuration.rs        # Settings and database connection
 │   ├── telemetry.rs            # Logging configuration
 │   ├── errors.rs               # Error utilities
-│   ├── authentication/         # Authentication layer (password hashing, future: sessions)
+│   ├── authentication/         # Authentication service layer
 │   │   ├── mod.rs              # Authentication module exports
 │   │   ├── password.rs         # Password hashing and verification logic
-│   │   └── credentials.rs      # Credential validation and database queries
+│   │   └── credentials.rs      # Credential validation and authenticated user lookup
 │   ├── domain/                 # Domain layer (business logic & validation)
-│   │   ├── mod.rs              # Domain module exports (farm, macros, test_data)
+│   │   ├── mod.rs              # Domain module exports (farm, user, macros, test_data)
 │   │   ├── macros.rs           # Shared macros for sqlx trait implementations
 │   │   ├── test_data.rs        # Shared test data constants (reusable)
-│   │   └── farm/               # Farm entity domain logic
-│   │       ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
-│   │       ├── address.rs      # Validated address type
-│   │       ├── canton.rs       # Validated Swiss canton type
-│   │       ├── categories.rs   # Validated categories type
-│   │       ├── name.rs         # Validated farm name type
-│   │       └── point.rs        # Validated coordinates type
-│   |── routes/
-│   |   ├── health_check.rs     # Health check endpoint
-|   |   └── farms/
-|   |       ├── mod.rs          # Farms module export and Farm struct
-|   |       ├── error.rs        # Farms errors
-│   |       ├── get.rs          # Farm get operations
-|   |       └── post.rs         # Farm post operations
-|   └── idempotency/
-|       ├── mod.rs              # Idempotency module export
-|       ├── key.rs              # Idempotency Key struct and validation
-|       ├── idempotency_data.rs # Idempotency data stored
-|       ├── error.rs            # Idempotency errors
-|       └── persistence/
-|           ├── mod.rs          # Persistence of idempotency details module export
-|           ├── error.rs        # Idempotency persistence errors
-|           ├── redis.rs        # Idempotency persistence in Redis
-|           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
+│   │   ├── farm/               # Farm entity domain logic
+│   │   │   ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
+│   │   │   ├── address.rs      # Validated address type
+│   │   │   ├── canton.rs       # Validated Swiss canton type
+│   │   │   ├── categories.rs   # Validated categories type
+│   │   │   ├── name.rs         # Validated farm name type
+│   │   │   └── point.rs        # Validated coordinates type
+│   │   └── user/               # User domain logic
+│   │       ├── mod.rs          # User domain exports
+│   │       └── role.rs         # User role enum mapped to PostgreSQL
+│   ├── routes/
+│   │   ├── authentication/
+│   │   │   ├── mod.rs          # Authentication route exports
+│   │   │   ├── error.rs        # Login route errors
+│   │   │   └── login.rs        # POST /login endpoint
+│   │   ├── health_check.rs     # Health check endpoint
+│   │   └── farms/
+│   │       ├── mod.rs          # Farms module export and Farm struct
+│   │       ├── error.rs        # Farms errors
+│   │       ├── get.rs          # Farm get operations
+│   │       └── post.rs         # Farm post operations
+│   └── idempotency/
+│       ├── mod.rs              # Idempotency module export
+│       ├── key.rs              # Idempotency Key struct and validation
+│       ├── idempotency_data.rs # Idempotency data stored
+│       ├── error.rs            # Idempotency errors
+│       └── persistence/
+│           ├── mod.rs          # Persistence of idempotency details module export
+│           ├── error.rs        # Idempotency persistence errors
+│           ├── redis.rs        # Idempotency persistence in Redis
+│           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
 ├── migrations/                 # Database migrations
 ├── otel/                       # OpenTelemetry Docker Compose and config files for local testing
 ├── configuration/              # Environment configs (base, local, production)
 ├── api_docs/                   # Bruno API collection
 ├── scripts/                    # Database setup scripts
 └── tests/                      # Integration tests
-    └── api/                    # API integration tests
+    ├── common/                 # Shared integration test helpers
+    ├── authentication/         # Authentication service integration tests
+    └── api/                    # HTTP/API integration tests
 ```
 
 ## Prerequisites
 
 - Rust 1.x (edition 2024)
 - PostgreSQL
-- Valkey
+- Redis or Valkey
 - SQLx CLI: `cargo install sqlx-cli --no-default-features --features postgres`
 - Docker (optional, for database setup)
 
@@ -129,6 +143,41 @@ cargo build --release
 ```
 
 The server runs on `http://localhost:8000` by default.
+
+## Current API Surface
+
+The service currently exposes:
+
+- `GET /health_check`
+- `GET /farms`
+- `GET /farms/{id}`
+- `POST /farms`
+- `POST /register`
+- `POST /verify-email`
+- `POST /login`
+- `POST /logout`
+- `GET /me`
+
+### Authentication & Registration Lifecycle
+
+Registration is public and email-verified:
+
+1. `POST /register` with `{ "email", "password" }` creates a `USER` account in a
+   `PENDING_VERIFICATION` state and emails a verification link. It always
+   responds `202 Accepted` - the same response for new and already-registered
+   emails - so it cannot be used to enumerate accounts. Passwords must be at
+   least 12 characters; `role` is server-owned and cannot be set by the client.
+2. `POST /verify-email` with `{ "token" }` consumes the (single-use, expiring)
+   token, marks the account `ACTIVE`, and sets `email_verified_at`.
+3. `POST /login` validates credentials and, on success, persists a
+   Valkey-backed session via a signed cookie. **Only `ACTIVE` users can log in**
+    - pending and disabled accounts get the same generic `401` as a wrong
+      password.
+4. `GET /me` returns the current user; `POST /logout` purges the session.
+
+Verification tokens are stored only as SHA-256 hashes; the raw token exists
+solely in the email sent to the user. Registration is rate limited per IP and
+per email using Valkey.
 
 ### Testing
 
