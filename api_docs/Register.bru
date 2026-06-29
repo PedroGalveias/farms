@@ -1,0 +1,43 @@
+meta {
+  name: Register
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{URL}}/register
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "new.user@example.com",
+    "password": "a-long-enough-password"
+  }
+}
+
+docs {
+  Public, unauthenticated registration.
+
+  Creates a USER account in the `PENDING_VERIFICATION` state and emails a
+  verification link. The user cannot log in until they verify their email.
+
+  Responses:
+  - 202 Accepted: request accepted. Returned for both new and already-registered
+    emails - the response is intentionally generic so it cannot be used to probe
+    which emails exist.
+  - 400 Bad Request: invalid email or a password shorter than 12 characters.
+  - 429 Too Many Requests: rate limit exceeded (per IP and per email).
+
+  The `role` is server-owned and cannot be set from the request body.
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

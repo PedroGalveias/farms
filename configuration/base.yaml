@@ -1,6 +1,5 @@
 application:
   host: 127.0.0.1
-  base_url: "http://127.0.0.1"
   port: 8000
 database:
   max_connections: 100 # default
@@ -35,9 +34,20 @@ telemetry:
   service_name: "farms-service"
   endpoint: "http://localhost:4317" #OTLP gRPC endpoint
   environment: "local"
-
-#email_client:
-#  base_url: "localhost"
-#  sender_email: "test@farms.com"
-#  authorization_token: ""
-#  timeout_milliseconds: 10000
+email_client:
+  # Default to the 'log' backend: emails are written to the application log
+  # instead of being sent, so local development needs no real provider. The
+  # verification link appears in the logs. Production overrides this to
+  # 'mailjet' for real delivery via the Mailjet Send API.
+  engine: "log"
+  base_url: "http://localhost:8025"
+  sender_email: "no-reply@farms.local"
+  api_key: "local-dev-key"
+  secret_key: "local-dev-secret"
+  timeout_milliseconds: 10000
+registration:
+  verification_token_ttl_seconds: 86400 # 24h
+  verification_base_url: "http://127.0.0.1:8000"
+  rate_limit:
+    max_requests: 5
+    window_seconds: 3600 # 1h

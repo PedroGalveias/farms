@@ -1,3 +1,4 @@
+use crate::domain::user::{Email, EmailError};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserializer;
 use serde_aux::field_attributes::deserialize_number_from_string;
@@ -12,6 +13,8 @@ pub struct Settings {
     pub idempotency: IdempotencySettings,
     pub logging: LoggingSettings,
     pub telemetry: TelemetrySettings,
+    pub email_client: EmailClientSettings,
+    pub registration: RegistrationSettings,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -19,7 +22,6 @@ pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
-    pub base_url: String,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -82,6 +84,106 @@ pub struct TelemetrySettings {
     pub service_name: String,
     pub endpoint: String,
     pub environment: String,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct EmailClientSettings {
+    /// Which email backend to use: real delivery (`mailjet`) or `log`
+    /// (writes the message to the application log instead of sending it).
+    #[serde(default = "default_email_client_engine")]
+    pub engine: EmailClientEngine,
+    pub base_url: String,
+    pub sender_email: String,
+    /// Mailjet API key (public) and secret key (private). Both are secrets and
+    /// are sent together via HTTP Basic auth.
+    pub api_key: SecretString,
+    pub secret_key: SecretString,
+    pub timeout_milliseconds: u64,
+}
+
+/// Selects how outbound email is delivered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EmailClientEngine {
+    /// Real delivery via the Mailjet Send API.
+    Mailjet,
+    /// Local development: log the email instead of sending it.
+    Log,
+}
+
+impl EmailClientEngine {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Mailjet => "mailjet",
+            Self::Log => "log",
+        }
+    }
+}
+
+impl TryFrom<String> for EmailClientEngine {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        match s.to_lowercase().as_str() {
+            "mailjet" => Ok(Self::Mailjet),
+            "log" => Ok(Self::Log),
+            other => Err(format!(
+                "'{}' is not a supported email client engine.\
+                Use 'mailjet' for real delivery or 'log' for local development.",
+                other
+            )),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for EmailClientEngine {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        EmailClientEngine::try_from(s).map_err(serde::de::Error::custom)
+    }
+}
+
+fn default_email_client_engine() -> EmailClientEngine {
+    EmailClientEngine::Mailjet
+}
+
+impl EmailClientSettings {
+    /// Validate the configured sender address at startup so a bad value
+    /// fails fast instead of on the first outbound email.
+    pub fn sender(&self) -> Result<Email, EmailError> {
+        Email::parse(self.sender_email.clone())
+    }
+
+    pub fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.timeout_milliseconds)
+    }
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct RegistrationSettings {
+    #[serde(default = "default_verification_token_ttl_seconds")]
+    pub verification_token_ttl_seconds: i64,
+    /// Public-facing URL embedded in verification links sent by email.
+    pub verification_base_url: String,
+    pub rate_limit: RateLimitSettings,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct RateLimitSettings {
+    pub max_requests: u64,
+    pub window_seconds: u64,
+    #[serde(default = "default_rate_limit_key_prefix")]
+    pub key_prefix: String,
+}
+
+fn default_verification_token_ttl_seconds() -> i64 {
+    86_400 // 24h
+}
+
+fn default_rate_limit_key_prefix() -> String {
+    "rl".to_string()
 }
 
 fn default_idempotency_settings_ttl_seconds() -> u64 {

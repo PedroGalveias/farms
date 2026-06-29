@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE users\n        SET status = $1::user_status, email_verified_at = $2, updated_at = $2\n        WHERE id = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "user_status",
+            "kind": {
+              "Enum": [
+                "PENDING_VERIFICATION",
+                "ACTIVE",
+                "DISABLED"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d0cbd8282877e9225c709c574b0ab0627b329ba8b7c3dfeb53a7eee1c7d0da0d"
+}

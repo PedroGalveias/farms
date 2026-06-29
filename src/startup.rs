@@ -1,6 +1,7 @@
 use crate::configuration::{
     DatabaseSettings, RedisSettings, SessionSameSite, SessionSettings, Settings,
 };
+use crate::email_client::EmailClient;
 use crate::routes::{authentication, farms, health_check};
 use actix_session::{
     SessionMiddleware,
@@ -155,6 +156,9 @@ pub async fn run(
     let redis_pool = Data::new(redis_pool);
     let configuration = Data::new(configuration);
 
+    let email_client = EmailClient::from_settings(&configuration.email_client)?;
+    let email_client = Data::new(email_client);
+
     // Capture the `connection` from the surrounding environment
     let server = HttpServer::new(move || {
         App::new()
@@ -171,6 +175,12 @@ pub async fn run(
             .route("/login", web::post().to(authentication::log_in))
             .route("/logout", web::post().to(authentication::log_out))
             .route("/me", web::get().to(authentication::get_me))
+            .route("/register", web::post().to(authentication::register))
+            .route(
+                "/verify-email",
+                web::post().to(authentication::verify_email),
+            )
+            .app_data(email_client.clone())
             // Get pointer copy and attach it to the application state
             .app_data(db_pool.clone())
             .app_data(configuration.clone())
