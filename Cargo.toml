@@ -62,7 +62,7 @@ tracing-actix-web = "0.7"
 
 # OpenTelemetry (optional)
 opentelemetry = { version = "0.31", features = ["trace", "metrics"], optional = true }
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "trace", "metrics"], optional = true }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "trace", "metrics"], optional = true }
 opentelemetry-otlp = { version = "0.31", features = ["trace", "metrics", "grpc-tonic"], optional = true }
 tracing-opentelemetry = { version = "0.32", optional = true }
 
