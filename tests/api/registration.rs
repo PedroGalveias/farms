@@ -13,6 +13,11 @@ fn unique_email() -> String {
     format!("user-{}@example.com", Uuid::new_v4())
 }
 
+/// A unique, valid username (lowercase, <= 30 chars).
+fn unique_username() -> String {
+    format!("u{}", &Uuid::new_v4().simple().to_string()[..12])
+}
+
 /// Accept any number of outbound emails with a 200 response.
 async fn mount_email_ok(app: &TestApp) {
     Mock::given(method("POST"))
@@ -29,6 +34,7 @@ async fn register_returns_202_for_valid_input() {
 
     let response = app
         .post_register(&serde_json::json!({
+            "username": unique_username(),
             "email": unique_email(),
             "password": VALID_PASSWORD,
         }))
@@ -42,10 +48,20 @@ async fn register_returns_202_for_existing_email() {
     let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
     let email = unique_email();
-    let body = serde_json::json!({ "email": email, "password": VALID_PASSWORD });
 
-    let first = app.post_register(&body).await;
-    let second = app.post_register(&body).await;
+    // Same email twice, but a different username each time (an email probe would
+    // use a fresh username), so the email-existence path - not a username clash -
+    // is what is being exercised.
+    let first = app
+        .post_register(&serde_json::json!({
+            "username": unique_username(), "email": email, "password": VALID_PASSWORD,
+        }))
+        .await;
+    let second = app
+        .post_register(&serde_json::json!({
+            "username": unique_username(), "email": email, "password": VALID_PASSWORD,
+        }))
+        .await;
 
     assert_eq!(StatusCode::ACCEPTED.as_u16(), first.status().as_u16());
     // Duplicate registration is indistinguishable from the first.
@@ -64,11 +80,49 @@ async fn register_returns_202_for_existing_email() {
 }
 
 #[tokio::test]
+async fn register_returns_409_for_taken_username() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    mount_email_ok(&app).await;
+    let username = unique_username();
+
+    let first = app
+        .post_register(&serde_json::json!({
+            "username": username, "email": unique_email(), "password": VALID_PASSWORD,
+        }))
+        .await;
+    assert_eq!(StatusCode::ACCEPTED.as_u16(), first.status().as_u16());
+
+    // Same username, different email: the username clash is surfaced (public id).
+    let second = app
+        .post_register(&serde_json::json!({
+            "username": username, "email": unique_email(), "password": VALID_PASSWORD,
+        }))
+        .await;
+    assert_eq!(StatusCode::CONFLICT.as_u16(), second.status().as_u16());
+}
+
+#[tokio::test]
+async fn register_returns_400_for_invalid_username() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+
+    let response = app
+        .post_register(&serde_json::json!({
+            "username": "ab", // too short
+            "email": unique_email(),
+            "password": VALID_PASSWORD,
+        }))
+        .await;
+
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
 async fn register_returns_400_for_invalid_email() {
     let app = spawn_app(IdempotencyEngine::None).await;
 
     let response = app
         .post_register(&serde_json::json!({
+            "username": unique_username(),
             "email": "not-an-email",
             "password": VALID_PASSWORD,
         }))
@@ -83,6 +137,7 @@ async fn register_returns_400_for_short_password() {
 
     let response = app
         .post_register(&serde_json::json!({
+            "username": unique_username(),
             "email": unique_email(),
             "password": "short", // < 12 chars
         }))
@@ -92,13 +147,15 @@ async fn register_returns_400_for_short_password() {
 }
 
 #[tokio::test]
-async fn register_stores_pending_user_with_hashed_password() {
+async fn register_stores_pending_user_with_chosen_username_and_hashed_password() {
     let app = spawn_app(IdempotencyEngine::None).await;
     mount_email_ok(&app).await;
-    // Mixed case to exercise normalisation.
+    // Mixed case to exercise normalisation of both fields.
+    let username = "Pedro_G".to_string();
     let email = format!("User-{}@Example.COM", Uuid::new_v4());
 
     app.post_register(&serde_json::json!({
+        "username": username,
         "email": email,
         "password": VALID_PASSWORD,
     }))
@@ -114,6 +171,17 @@ async fn register_stores_pending_user_with_hashed_password() {
         stored.password_hash
     );
     assert_ne!(VALID_PASSWORD, stored.password_hash);
+
+    // The chosen username is stored, lowercased.
+    let stored_username = sqlx::query!(
+        r#"SELECT username FROM users WHERE email = $1"#,
+        email.to_lowercase(),
+    )
+    .fetch_one(&app.db_pool)
+    .await
+    .unwrap()
+    .username;
+    assert_eq!("pedro_g", stored_username);
 }
 
 #[tokio::test]
@@ -123,6 +191,7 @@ async fn register_stores_token_hash_not_raw_token() {
     let email = unique_email();
 
     app.post_register(&serde_json::json!({
+        "username": unique_username(),
         "email": email,
         "password": VALID_PASSWORD,
     }))
@@ -145,6 +214,7 @@ async fn login_rejects_pending_user() {
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
+        "username": unique_username(),
         "email": email,
         "password": VALID_PASSWORD,
     }))
@@ -169,6 +239,7 @@ async fn verify_email_activates_user_and_allows_login() {
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
+        "username": unique_username(),
         "email": email,
         "password": VALID_PASSWORD,
     }))
@@ -198,6 +269,7 @@ async fn verify_email_rejects_used_token() {
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
+        "username": unique_username(),
         "email": email,
         "password": VALID_PASSWORD,
     }))
@@ -225,6 +297,7 @@ async fn verify_email_rejects_expired_token() {
     mount_email_ok(&app).await;
     let email = unique_email();
     app.post_register(&serde_json::json!({
+        "username": unique_username(),
         "email": email,
         "password": VALID_PASSWORD,
     }))
@@ -256,16 +329,24 @@ async fn register_is_rate_limited() {
     mount_email_ok(&app).await;
     let max_requests = app.configuration.registration.rate_limit.max_requests;
     let email = unique_email();
-    let body = serde_json::json!({ "email": email, "password": VALID_PASSWORD });
 
-    // The first `max_requests` attempts are accepted...
+    // The first `max_requests` attempts are accepted (same email, fresh username
+    // each time, so it is the per-email rate limit being exercised)...
     for _ in 0..max_requests {
-        let response = app.post_register(&body).await;
+        let response = app
+            .post_register(&serde_json::json!({
+                "username": unique_username(), "email": email, "password": VALID_PASSWORD,
+            }))
+            .await;
         assert_eq!(StatusCode::ACCEPTED.as_u16(), response.status().as_u16());
     }
 
     // ...the next one trips the limit.
-    let limited = app.post_register(&body).await;
+    let limited = app
+        .post_register(&serde_json::json!({
+            "username": unique_username(), "email": email, "password": VALID_PASSWORD,
+        }))
+        .await;
     assert_eq!(
         StatusCode::TOO_MANY_REQUESTS.as_u16(),
         limited.status().as_u16()
