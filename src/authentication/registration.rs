@@ -1,6 +1,6 @@
 use crate::authentication::password::compute_password_hash;
 use crate::configuration::RegistrationSettings;
-use crate::domain::user::{Email, Role, UserPassword, UserStatus};
+use crate::domain::user::{Email, Role, UserPassword, UserStatus, Username};
 use crate::email_client::EmailClient;
 use crate::errors::error_chain_fmt;
 use crate::telemetry::spawn_blocking_with_tracing;
@@ -18,6 +18,8 @@ use uuid::Uuid;
 pub enum RegisterUserError {
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
+    #[error("Username is already taken.")]
+    UsernameTaken,
     #[error("Failed to deliver the verification email.")]
     EmailDeliveryError(#[source] anyhow::Error),
 }
@@ -30,9 +32,10 @@ impl Debug for RegisterUserError {
 
 #[tracing::instrument(
     name = "Register a new user",
-    skip(email, password, pool, email_client, settings)
+    skip(username, email, password, pool, email_client, settings)
 )]
 pub async fn register_user(
+    username: Username,
     email: Email,
     password: UserPassword,
     pool: &PgPool,
@@ -58,17 +61,23 @@ pub async fn register_user(
         return Ok(());
     }
 
-    let user_id = match insert_pending_user(&mut transaction, &email, password_hash).await {
-        Ok(user_id) => user_id,
-        // Lost a race with a concurrent registration for the same email:
-        // the unique constraint on email fired. Same generic success.
-        Err(e) if is_unique_violation(&e) => return Ok(()),
-        Err(e) => {
-            return Err(anyhow::Error::from(e)
-                .context("Failed to insert new user.")
-                .into());
-        }
-    };
+    let user_id =
+        match insert_pending_user(&mut transaction, &username, &email, password_hash).await {
+            Ok(user_id) => user_id,
+            Err(e) => match unique_violation_constraint(&e).as_deref() {
+                // A username is a public identifier, so it is fine - and better UX -
+                // to tell the caller it is already taken.
+                Some("users_username_key") => return Err(RegisterUserError::UsernameTaken),
+                // Any other unique violation is the email constraint racing the check
+                // above. Stay generic so email existence is never revealed.
+                Some(_) => return Ok(()),
+                None => {
+                    return Err(anyhow::Error::from(e)
+                        .context("Failed to insert new user.")
+                        .into());
+                }
+            },
+        };
 
     let token = generate_verification_token();
     store_verification_token(&mut transaction, user_id, &token, settings).await?;
@@ -101,10 +110,16 @@ pub fn hash_verification_token(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
 }
 
-fn is_unique_violation(e: &sqlx::Error) -> bool {
-    e.as_database_error()
-        .map(|db_err| db_err.is_unique_violation())
-        .unwrap_or(false)
+/// If `e` is a UNIQUE violation, returns the name of the violated constraint
+/// (Postgres names inline constraints `<table>_<column>_key`). This lets
+/// registration distinguish a username clash (public, surfaced as 409) from an
+/// email clash (private, hidden behind a generic 202).
+fn unique_violation_constraint(e: &sqlx::Error) -> Option<String> {
+    let db_err = e.as_database_error()?;
+    if !db_err.is_unique_violation() {
+        return None;
+    }
+    Some(db_err.constraint().unwrap_or_default().to_string())
 }
 
 #[tracing::instrument(name = "Check whether email is registered", skip_all)]
@@ -123,6 +138,7 @@ async fn email_is_registered(
 #[tracing::instrument(name = "Insert pending user", skip_all)]
 async fn insert_pending_user(
     transaction: &mut Transaction<'_, Postgres>,
+    username: &Username,
     email: &Email,
     password_hash: SecretString,
 ) -> Result<Uuid, sqlx::Error> {
@@ -134,8 +150,7 @@ async fn insert_pending_user(
         VALUES ($1, $2, $3, $4, $5::user_role, $6::user_status, $7)
         "#,
         user_id,
-        // Server-generated username: no public availability checks needed yet.
-        format!("user-{user_id}"),
+        username.as_str(),
         email.as_str(),
         password_hash.expose_secret(),
         Role::User as Role,

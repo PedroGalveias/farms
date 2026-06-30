@@ -24,6 +24,8 @@ pub enum VerifyEmailError {
 pub enum RegisterError {
     #[error("{0}")]
     ValidationError(String),
+    #[error("Username is already taken.")]
+    UsernameTaken,
     #[error("Too many registration attempts. Try again later.")]
     RateLimited,
     #[error(transparent)]
@@ -58,6 +60,7 @@ impl ResponseError for RegisterError {
     fn status_code(&self) -> StatusCode {
         match self {
             Self::ValidationError(_) => StatusCode::BAD_REQUEST,
+            Self::UsernameTaken => StatusCode::CONFLICT,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
