@@ -15,6 +15,7 @@ env:
   APP_USER: app
   APP_USER_PWD: secret
   APP_DB_NAME: farms
+  DATABASE_URL: postgresql://postgres:password@localhost:5432/farms
 
 jobs:
   fmt:
