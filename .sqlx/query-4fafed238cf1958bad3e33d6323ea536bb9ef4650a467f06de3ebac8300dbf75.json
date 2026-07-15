@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO farm_products (farm_id, product_id, last_confirmed_at)\n                VALUES ($1, $2, $3)\n                ON CONFLICT (farm_id, product_id)\n                DO UPDATE SET last_confirmed_at = EXCLUDED.last_confirmed_at,\n                              status = 'AVAILABLE'\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4fafed238cf1958bad3e33d6323ea536bb9ef4650a467f06de3ebac8300dbf75"
+}

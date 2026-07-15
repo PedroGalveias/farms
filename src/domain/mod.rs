@@ -6,4 +6,5 @@ pub mod test_data;
 
 // Domain entities
 pub mod farm;
+pub mod suggestion;
 pub mod user;

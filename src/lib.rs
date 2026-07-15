@@ -4,6 +4,7 @@ pub mod errors;
 pub mod idempotency;
 pub mod routes;
 pub mod startup;
+pub mod taxonomy;
 pub mod telemetry;
 
 pub mod authentication;

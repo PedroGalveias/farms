@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO farm_product_suggestions\n            (id, farm_id, product_id, action, note, submitted_by, status, created_at)\n        VALUES ($1, $2, $3, 'ADD', NULL, $4, 'PENDING', now())\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "658c3844e94f907099bcf4438d28c10d227990a0a51bd23142857db4582e2806"
+}

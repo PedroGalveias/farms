@@ -1,0 +1,87 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            p.slug              AS \"slug!\",\n            p.name_en,\n            c.slug              AS \"group_slug!\",\n            fp.status           AS \"status: StockStatus\",\n            fp.last_confirmed_at\n        FROM farm_products fp\n        JOIN products p ON p.id = fp.product_id\n        JOIN product_categories c ON c.id = p.category_id\n        WHERE fp.farm_id = $1\n        ORDER BY p.slug\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "slug!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name_en",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "name_en"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "group_slug!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status: StockStatus",
+        "type_info": {
+          "Custom": {
+            "name": "stock_status",
+            "kind": {
+              "Enum": [
+                "AVAILABLE",
+                "SEASONAL",
+                "UNAVAILABLE"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "farm_products",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "last_confirmed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "farm_products",
+            "name": "last_confirmed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "743d764ffe452a00f7cfc1a457704e3014b6dcd2e26541a996a2ba62b7edeebf"
+}

@@ -1,6 +1,6 @@
-use crate::helpers::{TestApp, TestUser, redis_exists_with_retry, spawn_app};
+use crate::helpers::{TestApp, TestUser, redis_exists_with_retry, seed_test_taxonomy, spawn_app};
 use actix_web::http::StatusCode;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use deadpool_redis::redis::AsyncCommands;
 use fake::{
     Fake,
@@ -8,20 +8,27 @@ use fake::{
 };
 use farms::{
     configuration::IdempotencyEngine,
-    domain::farm::{Address, Canton, Categories, Name, Point},
+    domain::farm::{Address, Canton, Name, Point},
     idempotency::{ExpiryOutcome, HeaderPair, IdempotencyData, IdempotencyKey},
-    routes::farms::Farm,
 };
 use rand::RngExt;
 use std::ops::Sub;
 use std::{collections::HashSet, ops::Add, time::Duration};
 use uuid::Uuid;
 
-/// Generate a valid Swiss coordinate within Switzerland boundaries
+/// A farm's own fields for tests — the taxonomy (categories/products) is a
+/// separate dimension now, seeded and linked explicitly per test.
+struct TestFarm {
+    id: Uuid,
+    name: Name,
+    address: Address,
+    canton: Canton,
+    coordinates: Point,
+    created_at: DateTime<Utc>,
+}
+
+/// Generate a valid Swiss coordinate within Switzerland boundaries.
 fn generate_swiss_coordinates() -> String {
-    // Generate coordinates within Switzerland boundaries
-    // Latitude: 45.8 to 47.9
-    // Longitude: 5.9 to 10.6
     let lat = 45.8 + (rand::random::<f64>() * (47.9 - 45.8));
     let lon = 5.9 + (rand::random::<f64>() * (10.6 - 5.9));
     format!("{:.4},{:.4}", lat, lon)
@@ -38,83 +45,87 @@ fn generate_swiss_canton() -> Canton {
     Canton::parse(cantons[index].to_string()).expect("Generated invalid canton")
 }
 
-fn generate_farm() -> Farm {
+fn generate_farm() -> TestFarm {
     let id = Uuid::new_v4();
     let name = Name::parse(FakerName().fake()).expect("Generated invalid farm name");
     let address = Address::parse(StreetName().fake()).expect("Generated invalid address");
     let canton = generate_swiss_canton();
     let coordinates_str = generate_swiss_coordinates();
     let coordinates = Point::parse(&coordinates_str).expect("Generated invalid coordinates");
-    let categories =
-        Categories::parse(vec!["Organic".to_string(), "Vegetables".to_string()]).unwrap();
     let created_at = Utc::now();
 
-    Farm {
+    TestFarm {
         id,
         name,
         address,
         canton,
         coordinates,
-        categories,
         created_at,
-        updated_at: None,
     }
 }
 
-fn farm_to_json(farm: &Farm, idempotency_key: Uuid) -> serde_json::Value {
+/// The create body for a farm. Every farm needs at least one classification;
+/// these tests use the `strawberries` product (seed the taxonomy first).
+fn farm_to_json(farm: &TestFarm, idempotency_key: Uuid) -> serde_json::Value {
     serde_json::json!({
-        "id": farm.id,
         "name": farm.name,
         "address": farm.address,
         "canton": farm.canton,
         "coordinates": farm.coordinates,
-        "categories": farm.categories,
-        "created_at": farm.created_at,
+        "products": ["strawberries"],
         "idempotency_key": idempotency_key.to_string(),
     })
 }
 
-async fn insert_farm_in_db(app: &TestApp, farm: &Farm) {
-    sqlx::query!(r#" INSERT INTO farms (id, name, address, canton, coordinates, categories, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
-                farm.id,
-                &farm.name as &Name,
-                &farm.address as &Address,
-                &farm.canton as &Canton,
-                &farm.coordinates as &Point,
-                &farm.categories as &Categories,
-                farm.created_at,
-            )
-        .execute(&app.db_pool)
-        .await
-        .expect("Failed to execute query");
+/// Insert a farm row directly (no taxonomy links) for read-path tests.
+async fn insert_farm_in_db(app: &TestApp, farm: &TestFarm) {
+    sqlx::query!(
+        r#"
+        INSERT INTO farms (id, name, address, canton, coordinates, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+        farm.id,
+        &farm.name as &Name,
+        &farm.address as &Address,
+        &farm.canton as &Canton,
+        &farm.coordinates as &Point,
+        farm.created_at,
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("Failed to execute query");
 }
 
 async fn break_farms_table(app: &TestApp) {
-    sqlx::query!("ALTER TABLE farms DROP COLUMN name;",)
+    sqlx::query!("ALTER TABLE farms DROP COLUMN name;")
         .execute(&app.db_pool)
         .await
         .expect("Failed to execute query");
 }
 
-async fn create_single_farm(app: &TestApp) -> Farm {
+/// The `farms` array from a `GET /farms` list response (`{farms, next_cursor}`).
+async fn farms_array(response: reqwest::Response) -> Vec<serde_json::Value> {
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse response as JSON.");
+    body["farms"]
+        .as_array()
+        .expect("Response is missing a `farms` array.")
+        .clone()
+}
+
+async fn create_single_farm(app: &TestApp) -> TestFarm {
     let farm = generate_farm();
-
-    // Insert test data
     insert_farm_in_db(app, &farm).await;
-
     farm
 }
 
-// Can be optimized
-// generate all farms details and then batch insert them
-async fn create_n_farms(app: &TestApp, n: usize) -> Vec<Farm> {
-    let mut farms = Vec::<Farm>::with_capacity(n);
-
+async fn create_n_farms(app: &TestApp, n: usize) -> Vec<TestFarm> {
+    let mut farms = Vec::<TestFarm>::with_capacity(n);
     for _ in 0..n {
-        let farm = create_single_farm(app).await;
-        farms.push(farm);
+        farms.push(create_single_farm(app).await);
     }
-
     farms
 }
 
@@ -133,85 +144,98 @@ async fn log_in_test_user(app: &TestApp, user: &TestUser) {
 
 #[tokio::test]
 async fn get_farms_returns_empty_list_when_no_farms_exist() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
 
-    // Act
     let response = app.get_farms().await;
 
-    // Assert
     assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
-
-    let farms: Vec<Farm> = response
-        .json()
-        .await
-        .expect("Failed to parse response as JSON.");
-
-    assert_eq!(farms.len(), 0);
+    assert_eq!(0, farms_array(response).await.len());
 }
 
 #[tokio::test]
 async fn get_farms_returns_200_and_a_single_farm() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
     let created_farm = create_single_farm(&app).await;
 
-    // Act
     let response = app.get_farms().await;
 
-    // Assert
     assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+    let farms = farms_array(response).await;
 
-    let farms: Vec<Farm> = response
-        .json()
-        .await
-        .expect("Failed to parse response as JSON.");
-
-    assert_eq!(farms.len(), 1);
-    assert_eq!(farms[0].name, created_farm.name);
-    assert_eq!(farms[0].canton, created_farm.canton);
+    assert_eq!(1, farms.len());
+    assert_eq!(
+        created_farm.name.as_str(),
+        farms[0]["name"].as_str().unwrap()
+    );
+    assert_eq!(
+        created_farm.canton.as_str(),
+        farms[0]["canton"].as_str().unwrap()
+    );
 }
 
 #[tokio::test]
 async fn get_farms_returns_200_and_list_of_farms() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
-    let n_farms = 10;
-    let created_farms = create_n_farms(&app, n_farms).await;
+    let created_farms = create_n_farms(&app, 10).await;
 
-    // Act
     let response = app.get_farms().await;
 
-    // Assert
     assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+    let farms = farms_array(response).await;
 
-    let farms: Vec<Farm> = response
-        .json()
-        .await
-        .expect("Failed to parse response as JSON.");
-
-    assert_eq!(farms.len(), created_farms.len());
-
+    assert_eq!(created_farms.len(), farms.len());
     for created_farm in &created_farms {
-        assert!(farms.iter().any(|f| f.id == created_farm.id));
+        let id = created_farm.id.to_string();
+        assert!(farms.iter().any(|f| f["id"].as_str() == Some(&id)));
     }
 }
 
 #[tokio::test]
 async fn get_farms_returns_500_when_unexpected_error_occurs() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
-    // Break the DB
     break_farms_table(&app).await;
 
-    // Act
     let response = app.get_farms().await;
 
-    // Assert
     assert_eq!(
         StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
         response.status().as_u16()
     );
+}
+
+#[tokio::test]
+async fn get_farms_filters_by_category_including_group_only_farms() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    let taxonomy = seed_test_taxonomy(&app.db_pool).await;
+
+    // A farm classified only at the group level (Vegetables), no product.
+    let group_only = crate::helpers::insert_test_farm(&app.db_pool, "Group only").await;
+    crate::helpers::link_farm_category(&app.db_pool, group_only, taxonomy.vegetables_category_id)
+        .await;
+
+    // A farm with a granular product in a different group (Fruits).
+    let granular = crate::helpers::insert_test_farm(&app.db_pool, "Granular").await;
+    crate::helpers::link_farm_product(&app.db_pool, granular, taxonomy.strawberries_id).await;
+
+    let response = app
+        .api_client
+        .get(format!("{}/farms?category=vegetables", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+    assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+
+    let farms = farms_array(response).await;
+    assert_eq!(1, farms.len());
+    assert_eq!(group_only.to_string(), farms[0]["id"].as_str().unwrap());
+    // The derived categories surface the group-level membership.
+    let categories: Vec<&str> = farms[0]["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap())
+        .collect();
+    assert_eq!(vec!["vegetables"], categories);
 }
 
 #[tokio::test]
@@ -224,29 +248,26 @@ async fn get_farm_returns_200_and_the_request_farm_when_it_exists() {
     let response = app.get_farm(requested_farm.id).await;
 
     assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+    let farm: serde_json::Value = response.json().await.expect("Failed to parse JSON.");
 
-    let farm: Farm = response
-        .json()
-        .await
-        .expect("Failed to parse response as JSON.");
-
-    assert_eq!(farm.id, requested_farm.id);
-    assert_eq!(farm.name, requested_farm.name);
-    assert_eq!(farm.address, requested_farm.address);
-    assert_eq!(farm.canton, requested_farm.canton);
-    assert_eq!(farm.coordinates, requested_farm.coordinates);
-    assert_eq!(farm.categories, requested_farm.categories);
-
-    assert_ne!(farm.id, other_farm.id);
+    assert_eq!(requested_farm.id.to_string(), farm["id"].as_str().unwrap());
+    assert_eq!(requested_farm.name.as_str(), farm["name"].as_str().unwrap());
+    assert_eq!(
+        requested_farm.address.as_str(),
+        farm["address"].as_str().unwrap()
+    );
+    assert_eq!(
+        requested_farm.canton.as_str(),
+        farm["canton"].as_str().unwrap()
+    );
+    assert_ne!(other_farm.id.to_string(), farm["id"].as_str().unwrap());
 }
 
 #[tokio::test]
 async fn get_farm_returns_404_when_farm_does_not_exist() {
     let app = spawn_app(IdempotencyEngine::None).await;
 
-    let missing_farm_id = Uuid::new_v4();
-
-    let response = app.get_farm(missing_farm_id).await;
+    let response = app.get_farm(Uuid::new_v4()).await;
 
     assert_eq!(StatusCode::NOT_FOUND.as_u16(), response.status().as_u16());
 }
@@ -265,7 +286,6 @@ async fn get_farm_returns_500_when_unexpected_error_occurs() {
     let app = spawn_app(IdempotencyEngine::None).await;
 
     let farm_id = Uuid::new_v4();
-
     break_farms_table(&app).await;
 
     let response = app.get_farm(farm_id).await;
@@ -277,75 +297,152 @@ async fn get_farm_returns_500_when_unexpected_error_occurs() {
 }
 
 #[tokio::test]
-async fn create_farm_returns_a_200_for_valid_body_data() {
-    // Arrange
+async fn create_farm_returns_201_for_valid_body_data() {
     let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
-    // Act
     let body = farm_to_json(&farm, idempotency_key);
-
     let response = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
 
     let saved = sqlx::query!(
         r#"
-        SELECT id, name as "name: Name", address as "address: Address", canton as "canton: Canton", coordinates as "coordinates: Point", categories as "categories: Categories"
+        SELECT name as "name: Name", address as "address: Address",
+               canton as "canton: Canton", coordinates as "coordinates: Point"
         FROM farms
         "#
     )
     .fetch_one(&app.db_pool)
     .await
-    .expect("Failed to fetch saved subscription.");
+    .expect("Failed to fetch saved farm.");
 
     assert_eq!(saved.name, farm.name);
     assert_eq!(saved.address, farm.address);
     assert_eq!(saved.canton, farm.canton);
     assert_eq!(saved.coordinates, farm.coordinates);
-    assert_eq!(saved.categories, farm.categories);
+
+    // The product link was persisted.
+    let linked = sqlx::query!(
+        r#"
+        SELECT p.slug AS "slug!"
+        FROM farm_products fp
+        JOIN products p ON p.id = fp.product_id
+        "#
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to fetch farm products.");
+    let slugs: Vec<String> = linked.into_iter().map(|r| r.slug).collect();
+    assert_eq!(vec!["strawberries".to_string()], slugs);
 }
 
 #[tokio::test]
 async fn create_farm_returns_201_for_authenticated_admins() {
     let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
     let user = TestUser::generate_admin();
     log_in_test_user(&app, &user).await;
 
     let farm = generate_farm();
-    let idempotency_key = Uuid::new_v4();
-    let body = farm_to_json(&farm, idempotency_key);
-
+    let body = farm_to_json(&farm, Uuid::new_v4());
     let response = app.post_farm(&body).await;
 
     assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
-async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
-    // Arrange
+async fn create_farm_returns_400_for_unknown_product() {
     let app = spawn_app(IdempotencyEngine::None).await;
-    let farm = generate_farm();
-    let idempotency_key = Uuid::new_v4();
-
-    // Log in user
+    seed_test_taxonomy(&app.db_pool).await;
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
-    // Break the DB
+    let body = serde_json::json!({
+        "name": "Test Farm",
+        "address": "Road 1, 8000 Zürich",
+        "canton": "ZH",
+        "coordinates": "47.3769,8.5417",
+        "products": ["dragonfruit"],
+        "idempotency_key": Uuid::new_v4().to_string(),
+    });
+    let response = app.post_farm(&body).await;
+
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
+async fn create_farm_returns_400_when_no_category_or_product_is_given() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
+    let body = serde_json::json!({
+        "name": "Test Farm",
+        "address": "Road 1, 8000 Zürich",
+        "canton": "ZH",
+        "coordinates": "47.3769,8.5417",
+        "idempotency_key": Uuid::new_v4().to_string(),
+    });
+    let response = app.post_farm(&body).await;
+
+    assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
+}
+
+#[tokio::test]
+async fn create_farm_accepts_group_only_classification() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
+    let body = serde_json::json!({
+        "name": "Group Only Farm",
+        "address": "Road 1, 8000 Zürich",
+        "canton": "ZH",
+        "coordinates": "47.3769,8.5417",
+        "categories": ["vegetables"],
+        "idempotency_key": Uuid::new_v4().to_string(),
+    });
+    let response = app.post_farm(&body).await;
+
+    assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
+
+    let linked = sqlx::query!(
+        r#"
+        SELECT c.slug AS "slug!"
+        FROM farm_categories fc
+        JOIN product_categories c ON c.id = fc.category_id
+        "#
+    )
+    .fetch_all(&app.db_pool)
+    .await
+    .expect("Failed to fetch farm categories.");
+    let slugs: Vec<String> = linked.into_iter().map(|r| r.slug).collect();
+    assert_eq!(vec!["vegetables".to_string()], slugs);
+}
+
+#[tokio::test]
+async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+    let farm = generate_farm();
+    let idempotency_key = Uuid::new_v4();
+
+    let user = TestUser::generate_user();
+    log_in_test_user(&app, &user).await;
+
     break_farms_table(&app).await;
 
-    // Act
     let body = farm_to_json(&farm, idempotency_key);
     let response = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(
         StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
         response.status().as_u16()
@@ -356,9 +453,7 @@ async fn create_farm_returns_a_500_when_unexpected_error_occurs() {
 async fn create_farm_returns_401_for_unauthenticated_users() {
     let app = spawn_app(IdempotencyEngine::None).await;
     let farm = generate_farm();
-    let idempotency_key = Uuid::new_v4();
-
-    let body = farm_to_json(&farm, idempotency_key);
+    let body = farm_to_json(&farm, Uuid::new_v4());
 
     let response = app.post_farm(&body).await;
 
@@ -370,19 +465,14 @@ async fn create_farm_returns_401_for_unauthenticated_users() {
 
 #[tokio::test]
 async fn create_farm_returns_a_400_for_invalid_body_data() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
     let test_cases = vec![
         (
             serde_json::json!({
                 "address": "Bahnhofstrasse, 5401 Baden",
-                "canton": "Aargau",
+                "canton": "ZH",
                 "coordinates": "47.3769,8.5417",
-                "categories": [
-                    "Organic",
-                    "Fruit",
-                    "Vegetables"
-                ],
+                "products": ["strawberries"],
                 "idempotency_key": Uuid::new_v4(),
             }),
             "missing field 'name'",
@@ -390,13 +480,9 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
         (
             serde_json::json!({
                 "name": "Farmy",
-                "canton": "Aargau",
+                "canton": "ZH",
                 "coordinates": "47.3769,8.5417",
-                "categories": [
-                    "Organic",
-                    "Fruit",
-                    "Vegetables"
-                ],
+                "products": ["strawberries"],
                 "idempotency_key": Uuid::new_v4(),
             }),
             "missing field 'address'",
@@ -406,11 +492,7 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
                 "name": "Farmy",
                 "address": "Bahnhofstrasse, 5401 Baden",
                 "coordinates": "47.3769,8.5417",
-                "categories": [
-                    "Organic",
-                    "Fruit",
-                    "Vegetables"
-                ],
+                "products": ["strawberries"],
                 "idempotency_key": Uuid::new_v4(),
             }),
             "missing field 'canton'",
@@ -419,12 +501,8 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
             serde_json::json!({
                 "name": "Farmy",
                 "address": "Bahnhofstrasse, 5401 Baden",
-                "canton": "Aargau",
-                "categories": [
-                    "Organic",
-                    "Fruit",
-                    "Vegetables"
-                ],
+                "canton": "ZH",
+                "products": ["strawberries"],
                 "idempotency_key": Uuid::new_v4(),
             }),
             "missing field 'coordinates'",
@@ -433,37 +511,19 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
             serde_json::json!({
                 "name": "Farmy",
                 "address": "Bahnhofstrasse, 5401 Baden",
-                "canton": "Aargau",
+                "canton": "ZH",
                 "coordinates": "47.3769,8.5417",
-                "idempotency_key": Uuid::new_v4(),
-            }),
-            "missing field 'categories'",
-        ),
-        (
-            serde_json::json!({
-                "name": "Farmy",
-                "address": "Bahnhofstrasse, 5401 Baden",
-                "canton": "Aargau",
-                "coordinates": "47.3769,8.5417",
-                "categories": [
-                    "Organic",
-                    "Fruit",
-                    "Vegetables"
-                ],
+                "products": ["strawberries"],
             }),
             "missing field 'idempotency_key'",
         ),
     ];
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
     for (invalid_body, error_message) in test_cases {
-        // Act
         let response = app.post_farm(&invalid_body).await;
-
-        // Assert
         assert_eq!(
             StatusCode::BAD_REQUEST.as_u16(),
             response.status().as_u16(),
@@ -475,54 +535,27 @@ async fn create_farm_returns_a_400_for_invalid_body_data() {
 
 #[tokio::test]
 async fn create_farm_returns_400_for_invalid_coordinate_format() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
 
     let test_cases = vec![
-        (
-            serde_json::json!({
-                "name": "Test Farm",
-                "address": "Test Address",
-                "canton": "ZH",
-                "coordinates": "invalid",
-                "categories": ["Dairy"],
-                "idempotency_key": Uuid::new_v4(),
-            }),
-            "invalid coordinate format",
-        ),
-        (
-            serde_json::json!({
-                "name": "Test Farm",
-                "address": "Test Address",
-                "canton": "ZH",
-                "coordinates": "47.3769",
-                "categories": ["Dairy"],
-                "idempotency_key": Uuid::new_v4(),
-            }),
-            "single number coordinate",
-        ),
-        (
-            serde_json::json!({
-                "name": "Test Farm",
-                "address": "Test Address",
-                "canton": "ZH",
-                "coordinates": "abc,def",
-                "categories": ["Dairy"],
-                "idempotency_key": Uuid::new_v4(),
-            }),
-            "non-numeric coordinates",
-        ),
+        ("invalid", "invalid coordinate format"),
+        ("47.3769", "single number coordinate"),
+        ("abc,def", "non-numeric coordinates"),
     ];
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
-    for (invalid_body, error_message) in test_cases {
-        // Act
-        let response = app.post_farm(&invalid_body).await;
-
-        // Assert
+    for (coordinates, error_message) in test_cases {
+        let body = serde_json::json!({
+            "name": "Test Farm",
+            "address": "Test Address",
+            "canton": "ZH",
+            "coordinates": coordinates,
+            "products": ["strawberries"],
+            "idempotency_key": Uuid::new_v4(),
+        });
+        let response = app.post_farm(&body).await;
         assert_eq!(
             StatusCode::BAD_REQUEST.as_u16(),
             response.status().as_u16(),
@@ -534,10 +567,8 @@ async fn create_farm_returns_400_for_invalid_coordinate_format() {
 
 #[tokio::test]
 async fn create_farm_returns_400_for_coordinates_outside_switzerland() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
@@ -545,24 +576,20 @@ async fn create_farm_returns_400_for_coordinates_outside_switzerland() {
         "name": "Berlin Farm",
         "address": "Berlin Street 1",
         "canton": "ZH",
-        "coordinates": "52.5200,13.4050",  // Berlin coordinates
-        "categories": ["Dairy"],
+        "coordinates": "52.5200,13.4050",
+        "products": ["strawberries"],
         "idempotency_key": Uuid::new_v4(),
     });
 
-    // Act
     let response = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
 async fn create_farm_returns_400_for_invalid_latitude() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
@@ -570,24 +597,20 @@ async fn create_farm_returns_400_for_invalid_latitude() {
         "name": "Test Farm",
         "address": "Test Address",
         "canton": "ZH",
-        "coordinates": "91.0,8.5417",  // Latitude > 90
-        "categories": ["Dairy"],
+        "coordinates": "91.0,8.5417",
+        "products": ["strawberries"],
         "idempotency_key": Uuid::new_v4(),
     });
 
-    // Act
     let response = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
 async fn create_farm_returns_400_for_invalid_longitude() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::None).await;
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
@@ -595,29 +618,26 @@ async fn create_farm_returns_400_for_invalid_longitude() {
         "name": "Test Farm",
         "address": "Test Address",
         "canton": "ZH",
-        "coordinates": "47.3769,181.0",  // Longitude > 180
-        "categories": ["Dairy"],
+        "coordinates": "47.3769,181.0",
+        "products": ["strawberries"],
         "idempotency_key": Uuid::new_v4(),
     });
 
-    // Act
     let response = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(StatusCode::BAD_REQUEST.as_u16(), response.status().as_u16());
 }
 
 #[tokio::test]
-async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
-    // Arrange
+async fn create_farm_returns_201_for_all_valid_swiss_cantons() {
     let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
 
     let cantons = vec![
         "ZH", "BE", "LU", "UR", "SZ", "OW", "NW", "GL", "ZG", "FR", "SO", "BS", "BL", "SH", "AR",
         "AI", "SG", "GR", "AG", "TG", "TI", "VD", "VS", "NE", "GE", "JU",
     ];
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
@@ -627,14 +647,11 @@ async fn create_farm_returns_200_for_all_valid_swiss_cantons() {
             "address": "Test Address",
             "canton": canton,
             "coordinates": "47.3769,8.5417",
-            "categories": ["Dairy"],
+            "products": ["strawberries"],
             "idempotency_key": Uuid::new_v4(),
         });
 
-        // Act
         let response = app.post_farm(&body).await;
-
-        // Assert
         assert_eq!(
             StatusCode::CREATED.as_u16(),
             response.status().as_u16(),
@@ -665,26 +682,23 @@ async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_
 async fn create_farm_called_multiple_times_sequentially_doesnt_create_duplicate_farms_in_db(
     idempotency_engine: IdempotencyEngine,
 ) {
-    // Arrange
     let app = spawn_app(idempotency_engine).await;
+    seed_test_taxonomy(&app.db_pool).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
-    // Act
     let body = farm_to_json(&farm, idempotency_key);
 
     let response1 = app.post_farm(&body).await;
     let response2 = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(response1.status(), StatusCode::CREATED.as_u16());
     assert_eq!(response2.status(), StatusCode::CREATED.as_u16());
 
-    let saved = sqlx::query!("SELECT id FROM farms",)
+    let saved = sqlx::query!("SELECT id FROM farms")
         .fetch_all(&app.db_pool)
         .await
         .expect("Failed to fetch saved farms.");
@@ -712,23 +726,20 @@ async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_f
 async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_farms_in_db(
     idempotency_engine: IdempotencyEngine,
 ) {
-    // Arrange
     let app = spawn_app(idempotency_engine).await;
+    seed_test_taxonomy(&app.db_pool).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
-    // Act
     let body = farm_to_json(&farm, idempotency_key);
 
     let response1 = app.post_farm(&body);
     let response2 = app.post_farm(&body);
     let (response1, response2) = tokio::join!(response1, response2);
 
-    // Assert
     let status1 = response1.status().as_u16();
     let status2 = response2.status().as_u16();
 
@@ -737,8 +748,6 @@ async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_f
 
     assert!(allowed_statuses.contains(&status1));
     assert!(allowed_statuses.contains(&status2));
-
-    // At least one must be CREATED
     assert!(status1 == StatusCode::CREATED.as_u16() || status2 == StatusCode::CREATED.as_u16());
 
     let saved = sqlx::query!("SELECT id FROM farms")
@@ -751,21 +760,18 @@ async fn create_farm_called_multiple_times_in_parallel_doesnt_create_duplicate_f
 
 #[tokio::test]
 async fn create_farm_creates_redis_key_with_response() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::Redis).await;
+    seed_test_taxonomy(&app.db_pool).await;
     let farm = generate_farm();
     let idempotency_key = Uuid::new_v4();
 
-    // Log in user
     let user = TestUser::generate_user();
     log_in_test_user(&app, &user).await;
 
-    // Act
     let body = farm_to_json(&farm, idempotency_key);
 
     let response = app.post_farm(&body).await;
 
-    // Assert
     assert_eq!(StatusCode::CREATED.as_u16(), response.status().as_u16());
 
     let idempotency_key = IdempotencyKey::try_from(format!(
@@ -815,7 +821,6 @@ async fn create_farm_creates_redis_key_with_response() {
 
 #[tokio::test]
 async fn idempotency_worker_will_not_delete_non_expired_keys() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::Postgres).await;
     let user = TestUser::generate_user();
     let now = Utc::now();
@@ -831,10 +836,8 @@ async fn idempotency_worker_will_not_delete_non_expired_keys() {
         .await;
     }
 
-    // Act
     let outcome = app.run_idempotency_cleanup_worker().await.unwrap();
 
-    // Assert
     let idempotency_rows = app.get_idempotency_rows().await;
 
     assert_eq!(idempotency_rows, rows_to_create);
@@ -843,7 +846,6 @@ async fn idempotency_worker_will_not_delete_non_expired_keys() {
 
 #[tokio::test]
 async fn idempotency_worker_will_only_delete_expired_keys() {
-    // Arrange
     let app = spawn_app(IdempotencyEngine::Postgres).await;
     let user = TestUser::generate_user();
     let now = Utc::now();
@@ -869,10 +871,8 @@ async fn idempotency_worker_will_only_delete_expired_keys() {
         .await;
     }
 
-    // Act
     let outcome = app.run_idempotency_cleanup_worker().await.unwrap();
 
-    // Assert
     let idempotency_rows = app.get_idempotency_rows().await;
 
     assert_eq!(idempotency_rows, non_expired_rows_to_create);
