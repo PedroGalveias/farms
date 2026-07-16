@@ -103,7 +103,9 @@ jobs:
         run: SKIP_DOCKER=true ./scripts/init_db.sh
       - name: Check that queries are fresh
         env:
-          DATABASE_URL: postgres://${{ env.APP_USER }}:${{ env.APP_USER_PWD }}@localhost:5432/${{ env.APP_DB_NAME }}
+          # init_db.sh migrates as the postgres superuser, so the tables are
+          # owned by it — describe queries with the same credentials.
+          DATABASE_URL: postgres://postgres:password@localhost:5432/${{ env.APP_DB_NAME }}
         run: cargo sqlx prepare --workspace --all --check -- --all-targets
       - name: Generate code coverage
         run: cargo llvm-cov --all-features --workspace --cobertura --output-path ./coverage/cobertura.xml
