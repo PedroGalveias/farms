@@ -162,11 +162,14 @@ The service currently exposes:
 
 Registration is public and email-verified:
 
-1. `POST /register` with `{ "email", "password" }` creates a `USER` account in a
-   `PENDING_VERIFICATION` state and emails a verification link. It always
+1. `POST /register` with `{ "username", "email", "password" }` creates a `USER`
+   account in a `PENDING_VERIFICATION` state and emails a verification link. It
    responds `202 Accepted` - the same response for new and already-registered
-   emails - so it cannot be used to enumerate accounts. Passwords must be at
-   least 12 characters; `role` is server-owned and cannot be set by the client.
+   emails - so it cannot be used to enumerate accounts. A taken **username**,
+   however, returns `409 Conflict`: usernames are public identifiers, so a clash
+   is reported rather than hidden. Usernames are 3-30 characters
+   (letters/digits/`_`/`-`, stored lowercased); passwords must be at least 12
+   characters; `role` is server-owned and cannot be set by the client.
 2. `POST /verify-email` with `{ "token" }` consumes the (single-use, expiring)
    token, marks the account `ACTIVE`, and sets `email_verified_at`.
 3. `POST /login` validates credentials and, on success, persists a

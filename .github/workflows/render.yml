@@ -1,52 +1,15 @@
-name: Deploy to Render
+name: Trigger deploy to Render
 
 permissions:
   contents: read
-  deployments: write
 
 on:
-  push:
-    tags:
-      - v**
   workflow_dispatch:
-
-concurrency:
-  group: render
-  cancel-in-progress: true
 
 jobs:
   deployment:
     runs-on: ubuntu-latest
-    environment: render
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-          cache: 'pip'
-
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-
-      - name: Install the Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install sqlx-cli
-        uses: baptiste0928/cargo-install@v3
-        with:
-          crate: sqlx-cli
-          version: "0.8.6"
-          features: "rustls,postgres"
-          args: --no-default-features
-
-      - name: Run DB migrations on DB
-        env:
-          RENDER_API_BASE_URL: "https://api.render.com/v1"
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-        run: python scripts/render_db_migrate.py
-
       - name: Trigger deploy to Render
         env:
           deploy_url: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}

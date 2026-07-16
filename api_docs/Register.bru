@@ -16,6 +16,7 @@ headers {
 
 body:json {
   {
+    "username": "new-user",
     "email": "new.user@example.com",
     "password": "a-long-enough-password"
   }
@@ -27,11 +28,18 @@ docs {
   Creates a USER account in the `PENDING_VERIFICATION` state and emails a
   verification link. The user cannot log in until they verify their email.
 
+  The username is chosen by the user: 3-30 characters, letters/digits/`_`/`-`,
+  starting with a letter or digit. It is stored lowercased (case-insensitive
+  uniqueness).
+
   Responses:
   - 202 Accepted: request accepted. Returned for both new and already-registered
     emails - the response is intentionally generic so it cannot be used to probe
     which emails exist.
-  - 400 Bad Request: invalid email or a password shorter than 12 characters.
+  - 400 Bad Request: invalid username, invalid email, or a password shorter than
+    12 characters.
+  - 409 Conflict: the username is already taken. Unlike email, a username is a
+    public identifier, so a clash is reported rather than hidden.
   - 429 Too Many Requests: rate limit exceeded (per IP and per email).
 
   The `role` is server-owned and cannot be set from the request body.

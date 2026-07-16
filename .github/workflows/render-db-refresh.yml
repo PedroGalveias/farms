@@ -30,7 +30,7 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: sqlx-cli
-          version: "0.8.6"
+          version: "0.9.0"
           features: "rustls,postgres"
           args: --no-default-features
 

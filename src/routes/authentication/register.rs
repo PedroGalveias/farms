@@ -1,6 +1,6 @@
 use crate::authentication::{RegisterUserError, register_user};
 use crate::configuration::Settings;
-use crate::domain::user::{Email, UserPassword};
+use crate::domain::user::{Email, UserPassword, Username};
 use crate::email_client::EmailClient;
 use crate::rate_limit::{RateLimitDecision, check_rate_limit};
 use crate::routes::authentication::error::RegisterError;
@@ -11,6 +11,7 @@ use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]
 pub struct RegisterRequest {
+    username: String,
     email: String,
     password: SecretString,
 }
@@ -29,6 +30,8 @@ pub async fn register(
 ) -> Result<HttpResponse, RegisterError> {
     let body = body.into_inner();
 
+    let username = Username::parse(body.username)
+        .map_err(|e| RegisterError::ValidationError(e.to_string()))?;
     let email =
         Email::parse(body.email).map_err(|e| RegisterError::ValidationError(e.to_string()))?;
     let password = UserPassword::parse(body.password)
@@ -37,6 +40,7 @@ pub async fn register(
     enforce_rate_limits(&request, &email, &redis_pool, &configuration).await?;
 
     match register_user(
+        username,
         email,
         password,
         pool.get_ref(),
@@ -46,6 +50,8 @@ pub async fn register(
     .await
     {
         Ok(()) => {}
+        // A username is public, so a clash is reported rather than hidden.
+        Err(RegisterUserError::UsernameTaken) => return Err(RegisterError::UsernameTaken),
         // The account exists; only the email could not be delivered. We still
         // return the generic success below so the caller cannot tell whether
         // the address was new. The user stays pending and can request a resend.
