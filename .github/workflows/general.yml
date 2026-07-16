@@ -74,7 +74,7 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: sqlx-cli
-          version: "0.8.6"
+          version: "0.9.0"
           features: "rustls,postgres"
           args: --no-default-features
       - name: Check that queries are fresh
@@ -92,6 +92,15 @@ jobs:
           # Grant create db privileges to the app user
           GRANT_QUERY="ALTER USER ${APP_USER} CREATEDB;"
           PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "${GRANT_QUERY}"
+
+          # Each integration test spawns its own database + pools; pools
+          # dropped during a test runtime's shutdown never run sqlx's async
+          # close, so their connections linger until process exit and the
+          # suite exhausts max_connections. Let the SERVER reap idle sessions
+          # instead (sqlx's test_before_acquire transparently replaces any
+          # reaped live-pool connection).
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "ALTER SYSTEM SET idle_session_timeout = '5s';"
+          PGPASSWORD="password" psql -U "postgres" -h "localhost" -c "SELECT pg_reload_conf();"
       - name: Migrate database
         run: SKIP_DOCKER=true ./scripts/init_db.sh
       - name: Generate code coverage

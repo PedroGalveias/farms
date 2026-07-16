@@ -363,6 +363,14 @@ pub async fn spawn_app(idempotency_engine: IdempotencyEngine) -> TestApp {
         // parallel tests don't inflate each other's per-IP register limit.
         c.registration.rate_limit.key_prefix = format!("rltest:{}", Uuid::new_v4());
         c.idempotency.engine = idempotency_engine;
+        // Dozens of tests run in parallel, and each spawns its own app pool
+        // AND a TestApp helper pool. At the default 10 connections apiece the
+        // suite exhausts Postgres' max_connections (100 on a stock server /
+        // CI) and random tests die with PoolTimedOut. A test exercises one
+        // request at a time — tiny pools suffice; the longer acquire timeout
+        // rides out contention spikes.
+        c.database.max_connections = Some(2);
+        c.database.timeout_seconds = Some(15);
 
         c
     };
@@ -371,6 +379,9 @@ pub async fn spawn_app(idempotency_engine: IdempotencyEngine) -> TestApp {
     // snapshot once at startup, so anything a test needs to resolve by slug
     // (products/categories) must exist first.
     seed_standard_taxonomy(&setup_pool).await;
+    // Release the setup pool's connections instead of letting them linger for
+    // the test's lifetime (they count against max_connections).
+    setup_pool.close().await;
 
     let application = Application::build(configuration.clone())
         .await
