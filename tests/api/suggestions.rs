@@ -93,3 +93,33 @@ async fn submit_on_missing_farm_is_404() {
         .unwrap();
     assert_eq!(StatusCode::NOT_FOUND.as_u16(), response.status().as_u16());
 }
+#[tokio::test]
+async fn blank_note_is_stored_as_null() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+    let farm_id = insert_test_farm(&app.db_pool, "Farm").await;
+    app.log_in_active_user().await;
+
+    // An empty (or whitespace-only) note must not be stored as an empty
+    // string — downstream must see a single representation of "no note".
+    let response = app
+        .api_client
+        .post(format!(
+            "{}/farms/{}/product-suggestions",
+            app.address, farm_id
+        ))
+        .json(&json!({ "product": "strawberries", "action": "add", "note": "  " }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(StatusCode::ACCEPTED.as_u16(), response.status().as_u16());
+
+    let row = sqlx::query!(
+        r#"SELECT note FROM farm_product_suggestions WHERE farm_id = $1"#,
+        farm_id,
+    )
+    .fetch_one(&app.db_pool)
+    .await
+    .unwrap();
+    assert!(row.note.is_none(), "blank note should be NULL, not ''");
+}

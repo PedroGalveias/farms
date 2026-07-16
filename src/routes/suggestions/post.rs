@@ -46,8 +46,16 @@ pub async fn submit_suggestion(
         .id_for_slug(body.product.trim())
         .ok_or_else(|| SuggestionError::ValidationError("Unknown product.".to_string()))?;
 
-    // Optional note length guard.
-    if let Some(note) = &body.note
+    // Normalize the note: trim, and store an absent/blank note as NULL so
+    // downstream consumers see one representation of "no note" instead of
+    // sometimes-empty-string, sometimes-null.
+    let note = body
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_owned);
+    if let Some(note) = &note
         && note.chars().count() > 500
     {
         return Err(SuggestionError::ValidationError(
@@ -78,7 +86,7 @@ pub async fn submit_suggestion(
         farm_id,
         product_id,
         body.action as SuggestionAction,
-        body.note,
+        note,
         current_user.id,
         Utc::now(),
     )
