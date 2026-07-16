@@ -117,6 +117,10 @@ def main() -> int:
             for item in items:
                 key_de = item["de"] if isinstance(item, dict) else item
                 name_en = item.get("en", key_de) if isinstance(item, dict) else item
+                # Blank names become SQL NULL: empty string and NULL must not
+                # diverge downstream (a Some("") defeats the frontend's
+                # name_en ?? fallback and renders a blank label).
+                name_en = (name_en or "").strip() or None
                 if key_de in products:
                     continue
                 base = slugify(name_en)
