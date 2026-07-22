@@ -82,6 +82,19 @@ async fn free_text_q_matches_name_and_product() {
     .await;
     assert_eq!(1, by_prod.len());
     assert_eq!(by_product.to_string(), by_prod[0]["id"].as_str().unwrap());
+
+    // Matches the German product name too (Erdbeeren) — name_en is optional,
+    // so free-text must also search the always-present canonical German name.
+    let by_de = farms_array(
+        app.api_client
+            .get(format!("{}/farms?q=erdbeer", app.address))
+            .send()
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(1, by_de.len());
+    assert_eq!(by_product.to_string(), by_de[0]["id"].as_str().unwrap());
 }
 
 #[tokio::test]
