@@ -93,6 +93,45 @@ async fn submit_on_missing_farm_is_404() {
         .unwrap();
     assert_eq!(StatusCode::NOT_FOUND.as_u16(), response.status().as_u16());
 }
+
+#[tokio::test]
+async fn resubmitting_the_same_pending_suggestion_is_idempotent() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+    let farm_id = insert_test_farm(&app.db_pool, "Farm").await;
+    app.log_in_active_user().await;
+
+    let submit = || {
+        app.api_client
+            .post(format!(
+                "{}/farms/{}/product-suggestions",
+                app.address, farm_id
+            ))
+            .json(&json!({ "product": "strawberries", "action": "add" }))
+            .send()
+    };
+
+    assert_eq!(
+        StatusCode::ACCEPTED.as_u16(),
+        submit().await.unwrap().status().as_u16()
+    );
+    assert_eq!(
+        StatusCode::ACCEPTED.as_u16(),
+        submit().await.unwrap().status().as_u16()
+    );
+
+    // Only one PENDING row despite two submits.
+    let count = sqlx::query!(
+        r#"SELECT count(*) AS "count!" FROM farm_product_suggestions WHERE farm_id = $1"#,
+        farm_id,
+    )
+    .fetch_one(&app.db_pool)
+    .await
+    .unwrap()
+    .count;
+    assert_eq!(1, count);
+}
+
 #[tokio::test]
 async fn blank_note_is_stored_as_null() {
     let app = spawn_app(IdempotencyEngine::None).await;

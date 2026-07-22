@@ -76,11 +76,15 @@ pub async fn submit_suggestion(
         return Err(SuggestionError::FarmNotFound);
     }
 
+    // A user may have only one PENDING suggestion per (farm, product); a
+    // repeat submit is an idempotent no-op rather than queue noise.
     sqlx::query!(
         r#"
         INSERT INTO farm_product_suggestions
             (id, farm_id, product_id, action, note, submitted_by, status, created_at)
         VALUES ($1, $2, $3, $4::suggestion_action, $5, $6, 'PENDING', $7)
+        ON CONFLICT (farm_id, product_id, submitted_by) WHERE status = 'PENDING'
+        DO NOTHING
         "#,
         Uuid::new_v4(),
         farm_id,

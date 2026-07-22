@@ -1,10 +1,21 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            p.slug              AS \"slug!\",\n            p.name_en,\n            c.slug              AS \"group_slug!\",\n            fp.status           AS \"status: StockStatus\",\n            fp.last_confirmed_at\n        FROM farm_products fp\n        JOIN products p ON p.id = fp.product_id\n        JOIN product_categories c ON c.id = p.category_id\n        WHERE fp.farm_id = $1\n        ORDER BY p.slug\n        ",
+  "query": "\n        SELECT\n            fp.farm_id,\n            p.slug              AS \"slug!\",\n            p.key_de            AS \"name_de!\",\n            p.name_en,\n            c.slug              AS \"group_slug!\",\n            fp.status           AS \"status: StockStatus\",\n            fp.last_confirmed_at\n        FROM farm_products fp\n        JOIN products p ON p.id = fp.product_id\n        JOIN product_categories c ON c.id = p.category_id\n        WHERE fp.farm_id = ANY($1)\n        ORDER BY p.slug\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "farm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "farm_products",
+            "name": "farm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
         "name": "slug!",
         "type_info": "Text",
         "origin": {
@@ -15,7 +26,18 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
+        "name": "name_de!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "key_de"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
         "name": "name_en",
         "type_info": "Text",
         "origin": {
@@ -26,7 +48,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 4,
         "name": "group_slug!",
         "type_info": "Text",
         "origin": {
@@ -37,7 +59,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 5,
         "name": "status: StockStatus",
         "type_info": {
           "Custom": {
@@ -59,7 +81,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "last_confirmed_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -72,10 +94,12 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "UuidArray"
       ]
     },
     "nullable": [
+      false,
+      false,
       false,
       true,
       false,
@@ -83,5 +107,5 @@
       true
     ]
   },
-  "hash": "743d764ffe452a00f7cfc1a457704e3014b6dcd2e26541a996a2ba62b7edeebf"
+  "hash": "6c16d568767e8880f03527351228b903ddd1e6c0819a77cb931f18212c19c784"
 }
