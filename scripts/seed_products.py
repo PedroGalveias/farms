@@ -107,6 +107,10 @@ def main() -> int:
     products: dict[str, tuple[str, str, str]] = {}
     used_slugs: set[str] = set()
     unknown_groups: set[str] = set()
+    # A product's first group assignment wins; record any later record that
+    # files the same key_de under a different group so data-quality issues
+    # surface instead of being silently baked into the seed.
+    group_conflicts: set[tuple[str, str, str]] = set()
 
     for loc in locations:
         for group_de, items in (loc.get("categorized_products") or {}).items():
@@ -122,6 +126,9 @@ def main() -> int:
                 # name_en ?? fallback and renders a blank label).
                 name_en = (name_en or "").strip() or None
                 if key_de in products:
+                    existing_group = products[key_de][2]
+                    if existing_group != group_slug:
+                        group_conflicts.add((key_de, existing_group, group_slug))
                     continue
                 # Slug from the English name when present, else the German key —
                 # never slugify(None) (name_en is None for a blank translation).
@@ -138,6 +145,12 @@ def main() -> int:
         sys.stderr.write(
             f"WARNING: {len(unknown_groups)} unknown group(s) skipped: "
             f"{sorted(unknown_groups)}\n"
+        )
+
+    if group_conflicts:
+        sys.stderr.write(
+            f"WARNING: {len(group_conflicts)} product(s) seen under multiple "
+            f"groups (kept the first): {sorted(group_conflicts)}\n"
         )
 
     # --- Build farm rows + links --------------------------------------------

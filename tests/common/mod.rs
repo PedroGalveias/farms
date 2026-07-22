@@ -16,6 +16,7 @@ use farms::{
 };
 use once_cell::sync::Lazy;
 use secrecy::SecretString;
+use sqlx::postgres::PgPoolOptions;
 use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -424,8 +425,16 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to create database.");
 
-    // Migrate database
-    let connection_pool = PgPool::connect_with(config.with_db())
+    // Migrate database. Cap this setup pool the same way get_connection_pool
+    // caps the app pool (small max_connections + a generous acquire timeout):
+    // dozens of parallel tests each briefly open one, and the stock default of
+    // 10 would count against Postgres' max_connections during migration/seeding.
+    let connection_pool = PgPoolOptions::new()
+        .max_connections(config.max_connections.unwrap_or(2))
+        .acquire_timeout(std::time::Duration::from_secs(
+            config.timeout_seconds.unwrap_or(15),
+        ))
+        .connect_with(config.with_db())
         .await
         .expect("Failed to connect to Postgres.");
     sqlx::migrate!("./migrations")
