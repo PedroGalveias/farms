@@ -13,11 +13,19 @@ infrastructure.
 ## Features
 
 - **RESTful API** for creating and retrieving farm information
-- **Role-aware authentication** with credential validation against PostgreSQL
-- **Login endpoint** returning authenticated user identity and role
-- **PostgreSQL database** with SQLx for type-safe queries
-- **Redis/Valkey integration** for idempotency support and future session storage
-- **Structured logging** with tracing and bunyan formatting
+- **Directory querying** on `GET /farms`: filter by category, product, canton and
+  free-text; geo distance sort + radius filter; keyset (cursor) pagination
+- **Product taxonomy** — grouped categories plus granular products, snapshotted at
+  boot; each farm carries its `products[]` (with per-product **stock status**) and
+  a derived `categories[]`
+- **Community product suggestions** with an admin **moderation queue**
+  (submit → approve/reject)
+- **Registration + email verification** lifecycle with role-aware authentication,
+  Valkey-backed sessions, and credential validation against PostgreSQL
+- **Rate limiting** (per-IP and per-email) backed by Valkey
+- **PostgreSQL database** with SQLx for type-safe, compile-time-verified queries
+- **Redis/Valkey integration** for idempotency and session storage
+- **Structured logging** with tracing and bunyan formatting; optional OpenTelemetry
 - **Docker support** for containerized deployment
 - **Environment-based configuration** (local, production)
 
@@ -25,8 +33,8 @@ infrastructure.
 
 ### Tech Stack
 
-- **Web Framework**: Actix Web 4.12 with async/await
-- **Database**: PostgreSQL with SQLx 0.8 (compile-time verified queries)
+- **Web Framework**: Actix Web 4.14 with async/await
+- **Database**: PostgreSQL with SQLx 0.9 (compile-time verified queries)
 - **Cache / Session Infrastructure**: Redis or Valkey via deadpool-redis
 - **Async Runtime**: Tokio with multi-threading
 - **Logging**: tracing, tracing-subscriber, tracing-actix-web
@@ -39,54 +47,84 @@ farms/
 ├── src/
 │   ├── main.rs                 # Application entry point
 │   ├── lib.rs                  # Module exports
-│   ├── startup.rs              # Server configuration and HTTP setup
+│   ├── startup.rs              # Server configuration, routing and HTTP setup
 │   ├── configuration.rs        # Settings and database connection
-│   ├── telemetry.rs            # Logging configuration
+│   ├── telemetry.rs            # Logging / OpenTelemetry configuration
 │   ├── errors.rs               # Error utilities
+│   ├── email_client.rs         # Transactional email sender (verification links)
 │   ├── authentication/         # Authentication service layer
 │   │   ├── mod.rs              # Authentication module exports
+│   │   ├── credentials.rs      # Credential validation and authenticated user lookup
 │   │   ├── password.rs         # Password hashing and verification logic
-│   │   └── credentials.rs      # Credential validation and authenticated user lookup
+│   │   ├── registration.rs     # User registration
+│   │   ├── email_verification.rs # Email-verification token issue/consume
+│   │   ├── session.rs          # Valkey-backed session store
+│   │   ├── extractor.rs        # Authenticated-user request extractor
+│   │   └── admin.rs            # Admin-role guard
 │   ├── domain/                 # Domain layer (business logic & validation)
-│   │   ├── mod.rs              # Domain module exports (farm, user, macros, test_data)
+│   │   ├── mod.rs              # Domain module exports
 │   │   ├── macros.rs           # Shared macros for sqlx trait implementations
 │   │   ├── test_data.rs        # Shared test data constants (reusable)
+│   │   ├── suggestion.rs       # Product-suggestion domain types
 │   │   ├── farm/               # Farm entity domain logic
-│   │   │   ├── mod.rs          # Farm domain exports (Address, Canton, etc.)
+│   │   │   ├── mod.rs          # Farm domain exports
 │   │   │   ├── address.rs      # Validated address type
 │   │   │   ├── canton.rs       # Validated Swiss canton type
 │   │   │   ├── categories.rs   # Validated categories type
 │   │   │   ├── name.rs         # Validated farm name type
-│   │   │   └── point.rs        # Validated coordinates type
+│   │   │   ├── point.rs        # Validated coordinates type
+│   │   │   ├── product_slug.rs # Validated product slug type
+│   │   │   └── stock_status.rs # Per-product stock status enum
 │   │   └── user/               # User domain logic
 │   │       ├── mod.rs          # User domain exports
-│   │       └── role.rs         # User role enum mapped to PostgreSQL
+│   │       ├── email.rs        # Validated email type
+│   │       ├── username.rs     # Validated username type
+│   │       ├── password.rs     # Password newtype
+│   │       ├── role.rs         # User role enum mapped to PostgreSQL
+│   │       └── status.rs       # Account status enum (pending/active/…)
+│   ├── taxonomy/               # Boot-time product taxonomy snapshot (slug ↔ id)
+│   │   └── mod.rs
+│   ├── rate_limit/             # Valkey-backed per-IP / per-email rate limiting
+│   │   └── mod.rs
 │   ├── routes/
-│   │   ├── authentication/
-│   │   │   ├── mod.rs          # Authentication route exports
-│   │   │   ├── error.rs        # Login route errors
-│   │   │   └── login.rs        # POST /login endpoint
+│   │   ├── mod.rs
 │   │   ├── health_check.rs     # Health check endpoint
-│   │   └── farms/
-│   │       ├── mod.rs          # Farms module export and Farm struct
-│   │       ├── error.rs        # Farms errors
-│   │       ├── get.rs          # Farm get operations
-│   │       └── post.rs         # Farm post operations
+│   │   ├── authentication/     # /register, /verify-email, /login, /logout, /me
+│   │   │   ├── mod.rs
+│   │   │   ├── error.rs
+│   │   │   ├── register.rs
+│   │   │   ├── verify_email.rs
+│   │   │   ├── login.rs
+│   │   │   ├── logout.rs
+│   │   │   └── me.rs
+│   │   ├── farms/              # GET /farms (directory), GET /farms/{id}, POST /farms
+│   │   │   ├── mod.rs          # Farms module export + response DTOs
+│   │   │   ├── error.rs        # Farms errors
+│   │   │   ├── get.rs          # List (filters, geo, pagination) + detail
+│   │   │   └── post.rs         # Create farm
+│   │   ├── suggestions/        # POST /farms/{id}/product-suggestions
+│   │   │   ├── mod.rs
+│   │   │   ├── error.rs
+│   │   │   └── post.rs
+│   │   └── admin/              # Moderation queue (admin-only)
+│   │       ├── mod.rs
+│   │       ├── error.rs
+│   │       └── suggestions.rs  # List / approve / reject product suggestions
 │   └── idempotency/
 │       ├── mod.rs              # Idempotency module export
 │       ├── key.rs              # Idempotency Key struct and validation
 │       ├── idempotency_data.rs # Idempotency data stored
 │       ├── error.rs            # Idempotency errors
 │       └── persistence/
-│           ├── mod.rs          # Persistence of idempotency details module export
+│           ├── mod.rs          # Persistence module export
 │           ├── error.rs        # Idempotency persistence errors
 │           ├── redis.rs        # Idempotency persistence in Redis
-│           └── postgres.rs     # Idempotency persistence in Postgres (Untested)
+│           └── postgres.rs     # Idempotency persistence in Postgres
 ├── migrations/                 # Database migrations
 ├── otel/                       # OpenTelemetry Docker Compose and config files for local testing
 ├── configuration/              # Environment configs (base, local, production)
 ├── api_docs/                   # Bruno API collection
-├── scripts/                    # Database setup scripts
+├── scripts/                    # Database + seeding scripts
 └── tests/                      # Integration tests
     ├── common/                 # Shared integration test helpers
     ├── authentication/         # Authentication service integration tests
@@ -156,14 +194,46 @@ The server runs on `http://localhost:8000` by default.
 The service currently exposes:
 
 - `GET /health_check`
-- `GET /farms`
+- `GET /farms` — the directory (filters, geo, pagination — see below)
 - `GET /farms/{id}`
 - `POST /farms`
+- `POST /farms/{id}/product-suggestions` — suggest a product for a farm
+- `GET /admin/product-suggestions` — moderation queue (admin only)
+- `POST /admin/product-suggestions/{id}/approve` — approve (admin only)
+- `POST /admin/product-suggestions/{id}/reject` — reject (admin only)
 - `POST /register`
 - `POST /verify-email`
 - `POST /login`
 - `POST /logout`
 - `GET /me`
+
+### The Farm Directory — `GET /farms`
+
+Every farm carries its granular `products[]` (each with `slug`, `name_de`,
+`name_en`, `group` and a **stock `status`**) and a derived `categories[]`;
+`coordinates` is a `"lat,lng"` string. Supported query parameters:
+
+| Param | Meaning |
+| --- | --- |
+| `category` | Comma-separated group slugs (match farms in the group directly **or** via a product in it) |
+| `product` | Comma-separated product slugs |
+| `match` | `all` requires every listed product; otherwise "any of" |
+| `canton` | Comma-separated canton codes, e.g. `ZH,BE` |
+| `q` | Free-text over farm name, address and product names |
+| `lat` / `lng` | Requester location — adds `distance_km` to each farm |
+| `radius_km` | Keep only farms within this many km of `lat`/`lng` |
+| `sort` | `newest` (default) · `name` · `canton` · `nearest` (needs `lat`/`lng`) |
+| `limit` / `offset` | Page size (clamped 1–100) and offset |
+
+The response is `{ "farms": [...], "next_cursor": "<offset>" | null }`; a full
+page returns the next offset as `next_cursor`.
+
+### Product Suggestions & Moderation
+
+`POST /farms/{id}/product-suggestions` accepts `{ "product": "<slug>", "note"?: string }`
+and queues a `PENDING` suggestion. Admins review the queue via
+`GET /admin/product-suggestions` and `approve`/`reject` each; approving links the
+product to the farm (as `AVAILABLE`). All `/admin/*` routes require an admin role.
 
 ### Authentication & Registration Lifecycle
 
@@ -237,8 +307,17 @@ Build and run using Docker:
 docker build -t farms:latest .
 
 # Run container
+# The service is configured via APP_ENVIRONMENT + APP_* variables (config-rs,
+# `__` nests keys) — NOT a runtime DATABASE_URL (that's only used at build time
+# by sqlx-cli). Point it at your database and Redis/Valkey:
 docker run -p 8000:8000 \
-  -e DATABASE_URL=postgres://user:pass@host:5432/farms \
+  -e APP_ENVIRONMENT=production \
+  -e APP_DATABASE__HOST=db-host \
+  -e APP_DATABASE__PORT=5432 \
+  -e APP_DATABASE__USERNAME=app \
+  -e APP_DATABASE__PASSWORD=secret \
+  -e APP_DATABASE__DATABASE_NAME=farms \
+  -e APP_DATABASE__REQUIRE_SSL=true \
   farms:latest
 ```
 
