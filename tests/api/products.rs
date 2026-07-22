@@ -35,6 +35,12 @@ async fn list_filters_by_product_slug() {
     );
 
     // The response lists the farm's full product set with its derived category.
+    let product = &farms[0]["products"][0];
+    assert_eq!("strawberries", product["slug"].as_str().unwrap());
+    // Both canonical names ship (German always, English when known) so the
+    // frontend can localize by slug with a reliable fallback.
+    assert_eq!("Erdbeeren", product["name_de"].as_str().unwrap());
+    assert_eq!("Strawberries", product["name_en"].as_str().unwrap());
     let slugs: Vec<&str> = farms[0]["products"]
         .as_array()
         .unwrap()
