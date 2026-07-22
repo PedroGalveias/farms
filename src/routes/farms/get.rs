@@ -53,6 +53,11 @@ pub async fn get_all(
                 })?;
                 ids.push(id);
             }
+            // Deduplicate: `match=all` compares COUNT(DISTINCT product_id) to
+            // cardinality($2), so a repeated slug (`?product=x,x`) would inflate
+            // the target and never match.
+            ids.sort_unstable();
+            ids.dedup();
             ids
         }
     };
@@ -68,6 +73,8 @@ pub async fn get_all(
                 })?;
                 ids.push(id);
             }
+            ids.sort_unstable();
+            ids.dedup();
             ids
         }
     };

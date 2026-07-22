@@ -79,6 +79,31 @@ async fn match_all_requires_every_product() {
 }
 
 #[tokio::test]
+async fn match_all_deduplicates_repeated_product_slugs() {
+    // A repeated slug must not inflate the "all of" target: `?product=x,x`
+    // should behave like `?product=x`, not require the farm to list x twice.
+    let app = spawn_app(IdempotencyEngine::None).await;
+    let taxonomy = seed_test_taxonomy(&app.db_pool).await;
+
+    let farm = insert_test_farm(&app.db_pool, "Berry").await;
+    link_farm_product(&app.db_pool, farm, taxonomy.strawberries_id).await;
+
+    let response = app
+        .api_client
+        .get(format!(
+            "{}/farms?product=strawberries,strawberries&match=all",
+            app.address
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(StatusCode::OK.as_u16(), response.status().as_u16());
+    let farms = farms_array(response).await;
+    assert_eq!(1, farms.len());
+    assert_eq!(farm.to_string(), farms[0]["id"].as_str().unwrap());
+}
+
+#[tokio::test]
 async fn unknown_product_slug_is_400() {
     let app = spawn_app(IdempotencyEngine::None).await;
     seed_test_taxonomy(&app.db_pool).await;

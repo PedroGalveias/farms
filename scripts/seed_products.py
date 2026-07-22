@@ -123,7 +123,9 @@ def main() -> int:
                 name_en = (name_en or "").strip() or None
                 if key_de in products:
                     continue
-                base = slugify(name_en)
+                # Slug from the English name when present, else the German key —
+                # never slugify(None) (name_en is None for a blank translation).
+                base = slugify(name_en or key_de)
                 slug = base
                 n = 2
                 while slug in used_slugs:
