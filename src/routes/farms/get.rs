@@ -228,7 +228,8 @@ async fn list_farms(pool: &PgPool, params: ListParams<'_>) -> Result<Vec<FarmRes
                 OR EXISTS (
                     SELECT 1 FROM farm_products fpq
                     JOIN products pq ON pq.id = fpq.product_id
-                    WHERE fpq.farm_id = f.id AND pq.name_en ILIKE $5
+                    WHERE fpq.farm_id = f.id
+                      AND (pq.key_de ILIKE $5 OR pq.name_en ILIKE $5)
                 )
             )
             AND ($8::float8 IS NULL OR (f.distance_km IS NOT NULL AND f.distance_km <= $8))
