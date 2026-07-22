@@ -3,21 +3,20 @@ use deadpool_redis::{
     Pool,
     redis::{AsyncTypedCommands, RedisError},
 };
-use farms::idempotency::{ExpiryOutcome, try_to_execute_task};
 use farms::{
     authentication::change_password,
     configuration::{
         DatabaseSettings, EmailClientEngine, IdempotencyEngine, LogFormat, LoggingLevel,
-        LoggingSettings, Settings, TelemetrySettings, get_configuration,
+        LoggingSettings, Settings, TelemetryProtocol, TelemetrySettings, get_configuration,
     },
     domain::user::Role,
+    idempotency::{ExpiryOutcome, try_to_execute_task},
     startup::{Application, get_connection_pool, get_redis_connection_pool},
     telemetry::init_telemetry,
 };
 use once_cell::sync::Lazy;
 use secrecy::SecretString;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool};
+use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -95,6 +94,7 @@ static TRACING: Lazy<()> = Lazy::new(|| {
         service_name: "farms-tests".to_string(),
         endpoint: "".to_string(),
         environment: "test".to_string(),
+        protocol: TelemetryProtocol::Grpc,
     };
 
     // We cannot assign the output of `get_subscriber` to a variable based on the
