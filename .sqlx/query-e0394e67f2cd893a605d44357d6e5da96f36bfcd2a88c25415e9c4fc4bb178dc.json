@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE farm_product_suggestions\n        SET status = 'APPROVED', reviewed_by = $1, reviewed_at = $2\n        WHERE id = $3 AND status = 'PENDING'\n        RETURNING farm_id, product_id, action AS \"action: SuggestionAction\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "farm_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "farm_product_suggestions",
+            "name": "farm_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "product_id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "farm_product_suggestions",
+            "name": "product_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "action: SuggestionAction",
+        "type_info": {
+          "Custom": {
+            "name": "suggestion_action",
+            "kind": {
+              "Enum": [
+                "ADD",
+                "REMOVE"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "farm_product_suggestions",
+            "name": "action"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e0394e67f2cd893a605d44357d6e5da96f36bfcd2a88c25415e9c4fc4bb178dc"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO farms (id, name, address, canton, coordinates, created_at, updated_at)\n        VALUES ($1, $2, 'Somewhere 1', 'ZH', POINT(8.5, 47.4), now(), NULL)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "41e42d859989ea66145c81ee0cdcf3061f277449abeea55632e952f3d8c9366b"
+}

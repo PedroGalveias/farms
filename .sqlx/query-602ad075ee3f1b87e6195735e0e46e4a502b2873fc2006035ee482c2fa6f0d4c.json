@@ -1,21 +1,10 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, name as \"name: Name\", address as \"address: Address\", canton as \"canton: Canton\", coordinates as \"coordinates: Point\", categories as \"categories: Categories\"\n        FROM farms\n        ",
+  "query": "\n        SELECT name as \"name: Name\", address as \"address: Address\",\n               canton as \"canton: Canton\", coordinates as \"coordinates: Point\"\n        FROM farms\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
-        "type_info": "Uuid",
-        "origin": {
-          "Table": {
-            "table": "farms",
-            "name": "id"
-          }
-        }
-      },
-      {
-        "ordinal": 1,
         "name": "name: Name",
         "type_info": "Text",
         "origin": {
@@ -26,7 +15,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 1,
         "name": "address: Address",
         "type_info": "Text",
         "origin": {
@@ -37,7 +26,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "canton: Canton",
         "type_info": "Text",
         "origin": {
@@ -48,24 +37,13 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "coordinates: Point",
         "type_info": "Point",
         "origin": {
           "Table": {
             "table": "farms",
             "name": "coordinates"
-          }
-        }
-      },
-      {
-        "ordinal": 5,
-        "name": "categories: Categories",
-        "type_info": "TextArray",
-        "origin": {
-          "Table": {
-            "table": "farms",
-            "name": "categories"
           }
         }
       }
@@ -77,10 +55,8 @@
       false,
       false,
       false,
-      false,
-      false,
       false
     ]
   },
-  "hash": "b53ef9ea4394e8eba71fcd2dc410033da67ea496f3d25bbdef3fbb39faed86cb"
+  "hash": "602ad075ee3f1b87e6195735e0e46e4a502b2873fc2006035ee482c2fa6f0d4c"
 }

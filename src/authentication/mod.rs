@@ -1,3 +1,4 @@
+pub use admin::AdminUser;
 pub use credentials::{
     AuthenticatedUser, ValidateCredentialsError, change_password, get_user_by_id,
     validate_credentials,
@@ -7,6 +8,7 @@ pub use extractor::CurrentUser;
 pub use registration::{RegisterUserError, register_user};
 pub use session::TypedSession;
 
+mod admin;
 mod credentials;
 mod email_verification;
 mod extractor;

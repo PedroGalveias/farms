@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                p.id,\n                p.slug,\n                p.name_en,\n                c.slug AS \"group_slug!\"\n            FROM products p\n            JOIN product_categories c ON c.id = p.category_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name_en",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "name_en"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "group_slug!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "slug"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "86b30c2f3bd0a9e41b640dfc0e684f3c310aee6c50033e4a1c436c84775bdbbf"
+}

@@ -2,7 +2,7 @@ use crate::configuration::{
     DatabaseSettings, RedisSettings, SessionSameSite, SessionSettings, Settings,
 };
 use crate::email_client::EmailClient;
-use crate::routes::{authentication, farms, health_check};
+use crate::routes::{admin, authentication, farms, health_check, suggestions};
 use actix_session::{
     SessionMiddleware,
     config::{CookieContentSecurity, PersistentSession, TtlExtensionPolicy},
@@ -151,6 +151,19 @@ pub async fn run(
     let session_store = build_session_store(redis_pool.clone(), &configuration.redis).await?;
     let session_settings = configuration.session.clone();
 
+    // Load the product taxonomy once at boot: resolves product slugs to ids
+    // without a DB round trip per request, and gives an early 400 on unknown
+    // slugs. Cheap (a few hundred rows). Restart after the seeding PR runs so
+    // this snapshot is non-empty.
+    let taxonomy = crate::taxonomy::TaxonomySnapshot::load(&db_pool)
+        .await
+        .context("Failed to load the product taxonomy snapshot.")?;
+    tracing::info!(
+        products = taxonomy.len(),
+        "Loaded product taxonomy snapshot."
+    );
+    let taxonomy = Data::new(taxonomy);
+
     // Wrap the connection in a smart pointer
     let db_pool = Data::new(db_pool);
     let redis_pool = Data::new(redis_pool);
@@ -172,6 +185,22 @@ pub async fn run(
             .route("/farms", web::post().to(farms::create))
             .route("/farms", web::get().to(farms::get_all))
             .route("/farms/{id}", web::get().to(farms::get_by_id))
+            .route(
+                "/farms/{id}/product-suggestions",
+                web::post().to(suggestions::submit_suggestion),
+            )
+            .route(
+                "/admin/product-suggestions",
+                web::get().to(admin::list_pending),
+            )
+            .route(
+                "/admin/product-suggestions/{id}/approve",
+                web::post().to(admin::approve),
+            )
+            .route(
+                "/admin/product-suggestions/{id}/reject",
+                web::post().to(admin::reject),
+            )
             .route("/login", web::post().to(authentication::log_in))
             .route("/logout", web::post().to(authentication::log_out))
             .route("/me", web::get().to(authentication::get_me))
@@ -185,6 +214,7 @@ pub async fn run(
             .app_data(db_pool.clone())
             .app_data(configuration.clone())
             .app_data(redis_pool.clone())
+            .app_data(taxonomy.clone())
     })
     .listen(listener)?
     .run();

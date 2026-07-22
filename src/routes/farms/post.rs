@@ -1,9 +1,10 @@
 use crate::{
     authentication::CurrentUser,
     configuration::Settings,
-    domain::farm::{Address, Canton, Categories, Name, Point},
+    domain::farm::{Address, Canton, Name, Point, ProductSlug},
     idempotency::{IdempotencyError, IdempotencyNextAction, save_response, try_processing},
     routes::farms::FarmError,
+    taxonomy::TaxonomySnapshot,
 };
 use actix_web::{HttpResponse, web};
 use anyhow::Context;
@@ -18,51 +19,82 @@ pub struct FormData {
     address: String,
     canton: String,
     coordinates: String,
+    /// Category (group) slugs the farm belongs to, e.g. ["vegetables"]. Use
+    /// when only group-level classification is known (no specific product).
+    #[serde(default)]
     categories: Vec<String>,
+    /// Product slugs the farm offers, e.g. ["strawberries", "cherries"].
+    #[serde(default)]
+    products: Vec<String>,
     idempotency_key: String,
 }
 
 #[allow(clippy::async_yields_async)]
 #[tracing::instrument(
     name = "Adding a new farm",
-    skip(body, pool, redis_pool, configuration)
+    skip(body, pool, redis_pool, taxonomy, configuration)
 )]
 pub async fn create(
     current_user: CurrentUser,
     body: web::Json<FormData>,
     pool: web::Data<PgPool>,
     redis_pool: web::Data<Pool>,
+    taxonomy: web::Data<TaxonomySnapshot>,
     configuration: web::Data<Settings>,
 ) -> Result<HttpResponse, FarmError> {
-    // Validate farm's name
-    let name =
-        Name::parse(body.name.clone()).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    let body = body.into_inner();
 
-    let address = Address::parse(body.address.clone())
-        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
-
-    // Validate farm's canton
-    let canton = Canton::parse(body.canton.clone())
-        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
-
-    // Validate farm's coordinates
+    // Validate the farm's own fields.
+    let name = Name::parse(body.name).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    let address =
+        Address::parse(body.address).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    let canton =
+        Canton::parse(body.canton).map_err(|e| FarmError::ValidationError(e.to_string()))?;
     let coordinates =
         Point::parse(&body.coordinates).map_err(|e| FarmError::ValidationError(e.to_string()))?;
 
-    // Validate farm's categories
-    let categories = Categories::parse(body.categories.clone())
-        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    // Resolve product slugs (shape via ProductSlug, existence via the snapshot).
+    let mut product_ids = Vec::with_capacity(body.products.len());
+    for raw in body.products {
+        let slug =
+            ProductSlug::parse(raw).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+        let id = taxonomy.id_for_slug(slug.as_str()).ok_or_else(|| {
+            FarmError::ValidationError(format!("Unknown product '{}'.", slug.as_str()))
+        })?;
+        product_ids.push(id);
+    }
+    product_ids.sort_unstable();
+    product_ids.dedup();
 
-    // Record form fields in the tracing span
+    // Resolve category slugs (ProductSlug validates slug shape for either kind).
+    let mut category_ids = Vec::with_capacity(body.categories.len());
+    for raw in body.categories {
+        let slug =
+            ProductSlug::parse(raw).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+        let id = taxonomy
+            .category_id_for_slug(slug.as_str())
+            .ok_or_else(|| {
+                FarmError::ValidationError(format!("Unknown category '{}'.", slug.as_str()))
+            })?;
+        category_ids.push(id);
+    }
+    category_ids.sort_unstable();
+    category_ids.dedup();
+
+    // A farm needs at least one classification — coarse (group) or granular
+    // (product). The source data has both kinds, so accept either.
+    if category_ids.is_empty() && product_ids.is_empty() {
+        return Err(FarmError::ValidationError(
+            "At least one category or product is required.".to_string(),
+        ));
+    }
+
+    // Record form fields in the tracing span.
     let span = tracing::Span::current();
     span.record("create_name", name.as_str());
     span.record("create_address", address.as_str());
     span.record("create_canton", canton.as_str());
     span.record("create_coordinates", coordinates.as_str());
-    span.record(
-        "create_categories",
-        tracing::field::debug(&categories.as_vec()),
-    );
     span.record("idempotency_key", body.idempotency_key.as_str());
 
     let mut transaction = match try_processing(
@@ -83,15 +115,9 @@ pub async fn create(
         IdempotencyNextAction::StartProcessing(transaction) => transaction,
     };
 
-    insert_farm(
-        &mut transaction,
-        name,
-        address,
-        canton,
-        coordinates,
-        categories,
-    )
-    .await?;
+    let farm_id = insert_farm(&mut transaction, &name, &address, &canton, &coordinates).await?;
+    insert_farm_categories(&mut transaction, farm_id, &category_ids).await?;
+    insert_farm_products(&mut transaction, farm_id, &product_ids).await?;
 
     let response = HttpResponse::Created().finish();
     let (response, transaction) = save_response(
@@ -114,33 +140,79 @@ pub async fn create(
 }
 
 #[tracing::instrument(name = "Saving new farm details in the database", skip(transaction))]
-pub async fn insert_farm(
+async fn insert_farm(
     transaction: &mut Transaction<'_, Postgres>,
-    name: Name,
-    address: Address,
-    canton: Canton,
-    coordinates: Point,
-    categories: Categories,
-) -> Result<(), FarmError> {
+    name: &Name,
+    address: &Address,
+    canton: &Canton,
+    coordinates: &Point,
+) -> Result<Uuid, FarmError> {
+    let farm_id = Uuid::new_v4();
     let query = sqlx::query!(
         r#"
-            INSERT INTO farms (
-                 id, name, address, canton, coordinates, categories, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO farms (id, name, address, canton, coordinates, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
-        Uuid::new_v4(),
-        &name as &Name,
-        &address as &Address,
-        &canton as &Canton,
-        &coordinates as &Point,
-        &categories as &Categories,
+        farm_id,
+        name as &Name,
+        address as &Address,
+        canton as &Canton,
+        coordinates as &Point,
         Utc::now(),
-        Option::<DateTime<Utc>>::None
+        Option::<DateTime<Utc>>::None,
     );
     transaction
         .execute(query)
         .await
         .context("Failed to insert new farm in the database.")?;
+
+    Ok(farm_id)
+}
+
+#[tracing::instrument(name = "Linking farm to categories", skip(transaction))]
+async fn insert_farm_categories(
+    transaction: &mut Transaction<'_, Postgres>,
+    farm_id: Uuid,
+    category_ids: &[i16],
+) -> Result<(), FarmError> {
+    // Single round-trip bulk insert via UNNEST.
+    let query = sqlx::query!(
+        r#"
+        INSERT INTO farm_categories (farm_id, category_id)
+        SELECT $1, * FROM UNNEST($2::int2[])
+        ON CONFLICT DO NOTHING
+        "#,
+        farm_id,
+        category_ids,
+    );
+    transaction
+        .execute(query)
+        .await
+        .context("Failed to link farm to categories.")?;
+
+    Ok(())
+}
+
+#[tracing::instrument(name = "Linking farm to products", skip(transaction))]
+async fn insert_farm_products(
+    transaction: &mut Transaction<'_, Postgres>,
+    farm_id: Uuid,
+    product_ids: &[i32],
+) -> Result<(), FarmError> {
+    // Single round-trip bulk insert via UNNEST.
+    let query = sqlx::query!(
+        r#"
+        INSERT INTO farm_products (farm_id, product_id)
+        SELECT $1, * FROM UNNEST($2::int[])
+        ON CONFLICT DO NOTHING
+        "#,
+        farm_id,
+        product_ids,
+    );
+    transaction
+        .execute(query)
+        .await
+        .context("Failed to link farm to products.")?;
 
     Ok(())
 }

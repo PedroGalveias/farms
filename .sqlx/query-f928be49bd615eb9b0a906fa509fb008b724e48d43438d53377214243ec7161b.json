@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO farm_categories (farm_id, category_id)\n        SELECT $1, * FROM UNNEST($2::int2[])\n        ON CONFLICT DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int2Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f928be49bd615eb9b0a906fa509fb008b724e48d43438d53377214243ec7161b"
+}

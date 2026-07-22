@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            name as \"name: Name\",\n            address as \"address: Address\",\n            canton as \"canton: Canton\",\n            coordinates as \"coordinates: Point\",\n            categories as \"categories: Categories\",\n            created_at,\n            updated_at\n        FROM farms\n        ORDER BY created_at DESC, id DESC\n        ",
+  "query": "\n        SELECT\n            f.id,\n            f.name        AS \"name: Name\",\n            f.address     AS \"address: Address\",\n            f.canton      AS \"canton: Canton\",\n            f.coordinates AS \"coordinates: Point\",\n            f.created_at,\n            f.updated_at\n        FROM farms f\n        WHERE\n            (\n                cardinality($1::int2[]) = 0\n                OR f.id IN (\n                    SELECT fc.farm_id\n                    FROM farm_categories fc\n                    WHERE fc.category_id = ANY($1)\n                    UNION\n                    SELECT fp.farm_id\n                    FROM farm_products fp\n                    JOIN products p ON p.id = fp.product_id\n                    WHERE p.category_id = ANY($1)\n                )\n            )\n            AND (\n                cardinality($2::int[]) = 0\n                OR f.id IN (\n                    SELECT fp.farm_id\n                    FROM farm_products fp\n                    WHERE fp.product_id = ANY($2)\n                    GROUP BY fp.farm_id\n                    HAVING $3 = false\n                        OR count(DISTINCT fp.product_id) = cardinality($2)\n                )\n            )\n            AND (\n                $4::timestamptz IS NULL\n                OR (f.created_at, f.id) < ($4, $5)\n            )\n        ORDER BY f.created_at DESC, f.id DESC\n        LIMIT $6\n        ",
   "describe": {
     "columns": [
       {
@@ -60,17 +60,6 @@
       },
       {
         "ordinal": 5,
-        "name": "categories: Categories",
-        "type_info": "TextArray",
-        "origin": {
-          "Table": {
-            "table": "farms",
-            "name": "categories"
-          }
-        }
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -81,7 +70,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -93,10 +82,16 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Int2Array",
+        "Int4Array",
+        "Bool",
+        "Timestamptz",
+        "Uuid",
+        "Int8"
+      ]
     },
     "nullable": [
-      false,
       false,
       false,
       false,
@@ -106,5 +101,5 @@
       true
     ]
   },
-  "hash": "14dfabdcec903ea049524389e8103adf45b9e5641f9f1614b165afb83c88df6e"
+  "hash": "cb7784974ad4d11506e8bcda04786cfb85e93f8eacbec5bd418ebb4c4b877d38"
 }

@@ -16,6 +16,7 @@ use farms::{
 };
 use once_cell::sync::Lazy;
 use secrecy::SecretString;
+use sqlx::postgres::PgPoolOptions;
 use sqlx::{AssertSqlSafe, Connection, PgConnection, PgPool};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -363,10 +364,25 @@ pub async fn spawn_app(idempotency_engine: IdempotencyEngine) -> TestApp {
         // parallel tests don't inflate each other's per-IP register limit.
         c.registration.rate_limit.key_prefix = format!("rltest:{}", Uuid::new_v4());
         c.idempotency.engine = idempotency_engine;
+        // Dozens of tests run in parallel, and each spawns its own app pool
+        // AND a TestApp helper pool. At the default 10 connections apiece the
+        // suite exhausts Postgres' max_connections (100 on a stock server /
+        // CI) and random tests die with PoolTimedOut. A test exercises one
+        // request at a time — tiny pools suffice; the longer acquire timeout
+        // rides out contention spikes.
+        c.database.max_connections = Some(2);
+        c.database.timeout_seconds = Some(15);
 
         c
     };
-    configure_database(&configuration.database).await;
+    let setup_pool = configure_database(&configuration.database).await;
+    // Seed the taxonomy BEFORE the app boots: the app loads its taxonomy
+    // snapshot once at startup, so anything a test needs to resolve by slug
+    // (products/categories) must exist first.
+    seed_standard_taxonomy(&setup_pool).await;
+    // Release the setup pool's connections instead of letting them linger for
+    // the test's lifetime (they count against max_connections).
+    setup_pool.close().await;
 
     let application = Application::build(configuration.clone())
         .await
@@ -409,8 +425,16 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Failed to create database.");
 
-    // Migrate database
-    let connection_pool = PgPool::connect_with(config.with_db())
+    // Migrate database. Cap this setup pool the same way get_connection_pool
+    // caps the app pool (small max_connections + a generous acquire timeout):
+    // dozens of parallel tests each briefly open one, and the stock default of
+    // 10 would count against Postgres' max_connections during migration/seeding.
+    let connection_pool = PgPoolOptions::new()
+        .max_connections(config.max_connections.unwrap_or(2))
+        .acquire_timeout(std::time::Duration::from_secs(
+            config.timeout_seconds.unwrap_or(15),
+        ))
+        .connect_with(config.with_db())
         .await
         .expect("Failed to connect to Postgres.");
     sqlx::migrate!("./migrations")
@@ -443,5 +467,174 @@ pub async fn redis_exists_with_retry(
                 sleep(Duration::from_millis(delay_ms)).await;
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Product-taxonomy test fixtures (subcategories feature).
+//
+// Each test seeds its own tiny taxonomy; populating the real dataset is a
+// separate concern. Two groups (fruits, vegetables) with three products.
+
+#[allow(dead_code)]
+pub struct TestTaxonomy {
+    pub fruits_category_id: i16,
+    pub vegetables_category_id: i16,
+    pub strawberries_id: i32,
+    pub cherries_id: i32,
+    pub broccoli_id: i32,
+}
+
+/// Insert the standard test taxonomy. Called by `spawn_app` before the app
+/// boots so the app's startup snapshot resolves these slugs.
+async fn seed_standard_taxonomy(pool: &PgPool) {
+    let fruits = insert_test_category(pool, "Früchte", "fruits", 0).await;
+    let vegetables = insert_test_category(pool, "Gemüse", "vegetables", 1).await;
+    insert_test_product(pool, fruits, "Erdbeeren", "strawberries", "Strawberries").await;
+    insert_test_product(pool, fruits, "Kirschen", "cherries", "Cherries").await;
+    insert_test_product(pool, vegetables, "Broccoli", "broccoli", "Broccoli").await;
+}
+
+/// The ids of the standard taxonomy `spawn_app` already seeded. (Named `seed_*`
+/// for readability at call sites; the rows already exist, so this only reads.)
+#[allow(dead_code)]
+pub async fn seed_test_taxonomy(pool: &PgPool) -> TestTaxonomy {
+    let categories = sqlx::query!(r#"SELECT id, slug FROM product_categories"#)
+        .fetch_all(pool)
+        .await
+        .expect("Failed to read test categories.");
+    let products = sqlx::query!(r#"SELECT id, slug FROM products"#)
+        .fetch_all(pool)
+        .await
+        .expect("Failed to read test products.");
+    let category = |slug: &str| categories.iter().find(|c| c.slug == slug).unwrap().id;
+    let product = |slug: &str| products.iter().find(|p| p.slug == slug).unwrap().id;
+    TestTaxonomy {
+        fruits_category_id: category("fruits"),
+        vegetables_category_id: category("vegetables"),
+        strawberries_id: product("strawberries"),
+        cherries_id: product("cherries"),
+        broccoli_id: product("broccoli"),
+    }
+}
+
+#[allow(dead_code)]
+async fn insert_test_category(pool: &PgPool, key_de: &str, slug: &str, display_order: i16) -> i16 {
+    sqlx::query!(
+        r#"
+        INSERT INTO product_categories (key_de, slug, display_order)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        "#,
+        key_de,
+        slug,
+        display_order,
+    )
+    .fetch_one(pool)
+    .await
+    .expect("Failed to insert test category.")
+    .id
+}
+
+#[allow(dead_code)]
+async fn insert_test_product(
+    pool: &PgPool,
+    category_id: i16,
+    key_de: &str,
+    slug: &str,
+    name_en: &str,
+) -> i32 {
+    sqlx::query!(
+        r#"
+        INSERT INTO products (category_id, key_de, slug, name_en)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        "#,
+        category_id,
+        key_de,
+        slug,
+        name_en,
+    )
+    .fetch_one(pool)
+    .await
+    .expect("Failed to insert test product.")
+    .id
+}
+
+/// Insert a bare farm (no category or product links) and return its id.
+#[allow(dead_code)]
+pub async fn insert_test_farm(pool: &PgPool, name: &str) -> Uuid {
+    let id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO farms (id, name, address, canton, coordinates, created_at, updated_at)
+        VALUES ($1, $2, 'Somewhere 1', 'ZH', POINT(8.5, 47.4), now(), NULL)
+        "#,
+        id,
+        name,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to insert test farm.");
+    id
+}
+
+/// Link a farm to a granular product.
+#[allow(dead_code)]
+pub async fn link_farm_product(pool: &PgPool, farm_id: Uuid, product_id: i32) {
+    sqlx::query!(
+        r#"INSERT INTO farm_products (farm_id, product_id) VALUES ($1, $2)"#,
+        farm_id,
+        product_id,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to link farm product.");
+}
+
+/// Link a farm to a category group (coarse membership).
+#[allow(dead_code)]
+pub async fn link_farm_category(pool: &PgPool, farm_id: Uuid, category_id: i16) {
+    sqlx::query!(
+        r#"INSERT INTO farm_categories (farm_id, category_id) VALUES ($1, $2)"#,
+        farm_id,
+        category_id,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to link farm category.");
+}
+
+impl TestApp {
+    /// Create + store an ACTIVE plain user and establish a session. Returns the
+    /// user id.
+    #[allow(dead_code)]
+    pub async fn log_in_active_user(&self) -> Uuid {
+        self.log_in_role(Role::User).await
+    }
+
+    /// Create + store an ACTIVE admin user and establish a session. Returns the
+    /// user id.
+    #[allow(dead_code)]
+    pub async fn log_in_admin_user(&self) -> Uuid {
+        self.log_in_role(Role::Admin).await
+    }
+
+    #[allow(dead_code)]
+    async fn log_in_role(&self, role: Role) -> Uuid {
+        let user = TestUser::generate_with_role(role);
+        user.store(&self.db_pool).await;
+        let response = self
+            .post_login(&serde_json::json!({
+                "email": user.email,
+                "password": user.password,
+            }))
+            .await;
+        assert_eq!(
+            200,
+            response.status().as_u16(),
+            "Test user login failed to establish a session."
+        );
+        user.id
     }
 }
