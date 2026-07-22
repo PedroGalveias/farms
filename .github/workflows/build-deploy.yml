@@ -1,10 +1,13 @@
 name: Build and Push to GHCR then Deploy on Render
 
+# Deploy only from release tags — never from a main push. Pushing to main used
+# to build a `latest` image, publish it to GHCR and trigger a Render deploy on
+# every merge; now a package is built and Render is deployed ONLY for a tagged
+# release (v*). main is still fully validated by general.yml (fmt/clippy/tests);
+# it just no longer ships. `workflow_dispatch` keeps a manual escape hatch.
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
     tags:
       - v*
 
