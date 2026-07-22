@@ -1,5 +1,12 @@
 # Farms
 
+<p>
+  <a href="https://github.com/PedroGalveias/farms/actions/workflows/general.yml"><img alt="CI-Build" src="https://github.com/PedroGalveias/farms/actions/workflows/general.yml/badge.svg"></a>
+  <a href="https://github.com/PedroGalveias/farms/actions/workflows/github-code-scanning/codeql"><img alt="CodeQL" src="https://github.com/PedroGalveias/farms/actions/workflows/github-code-scanning/codeql/badge.svg"></a>
+  <img alt="Rust edition 2024" src="https://img.shields.io/badge/rust-edition%202024-dea584">
+  <img alt="License: GPL-2.0" src="https://img.shields.io/badge/license-GPL--2.0-blue">
+</p>
+
 A Rust web service for managing farm data in Switzerland, built with Actix Web, PostgreSQL, and Redis/Valkey-backed
 infrastructure.
 
