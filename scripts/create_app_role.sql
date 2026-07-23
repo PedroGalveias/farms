@@ -4,27 +4,38 @@
 -- NOT apply migrations (those run out-of-band as the database owner via
 -- `sqlx migrate run` / scripts/render_db_migrate.py), so at runtime it only
 -- needs DML — SELECT / INSERT / UPDATE / DELETE. This role therefore has:
---   * NO SUPERUSER, NO CREATEDB, NO CREATEROLE
+--   * NO SUPERUSER, NO CREATEDB, NO CREATEROLE, NO BYPASSRLS, NO REPLICATION
 --   * NO ownership of the database or its tables (cannot DROP/ALTER schema)
 --   * NO CREATE on the schema (cannot add its own objects)
 --   * only DML on the application tables + sequence access for IDENTITY columns
 --
 -- Run this ONCE as the database owner/admin (on Render, the credentials in the
--- service's own connection string are the owner). Pass the app password as a
--- psql variable so no secret is committed:
+-- service's own connection string are the owner). Generate the password into a
+-- shell variable so you can RETAIN it for the runtime config — the script only
+-- ever receives it as a psql variable, never from this file:
 --
---   psql "$OWNER_DATABASE_URL" \
---     -v app_password="$(openssl rand -base64 24)" \
+--   APP_PASSWORD="$(openssl rand -base64 24)"
+--   psql "$OWNER_DATABASE_URL" -v "app_password=$APP_PASSWORD" \
 --     -f scripts/create_app_role.sql
 --
--- Then point the service at the new role (leave migrations running as the owner):
+-- Then store that same value in the service's secret manager / environment
+-- (leave migrations running as the owner):
 --   APP_DATABASE__USERNAME=farms_app
---   APP_DATABASE__PASSWORD=<the password you generated above>
+--   APP_DATABASE__PASSWORD=$APP_PASSWORD
 --
 -- Re-running is safe: it is idempotent and also rotates the password to the
--- value you pass in.
+-- value you pass in. The whole thing runs in ONE transaction, so a failure
+-- part-way can't leave farms_app with a rotated password but missing grants.
+--
+-- ⚠ Reuse caveat: if a `farms_app` role already exists, this resets its role
+-- attributes and re-applies the grants, but it does NOT drop pre-existing table
+-- ownership or role memberships it may have accumulated. For a guaranteed
+-- clean slate, DROP the role first (reassign or drop any objects it owns) and
+-- let this script recreate it.
 
 \set ON_ERROR_STOP on
+
+BEGIN;
 
 -- 1. The login role. Created only if missing; the password always comes from
 --    the :app_password variable, never from this file.
@@ -32,9 +43,12 @@ SELECT format('CREATE ROLE farms_app LOGIN PASSWORD %L', :'app_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'farms_app')
 \gexec
 
--- Keep the password in step on re-runs (supports rotation) and pin the role to
--- the least-privilege attributes even if it existed before.
-SELECT format('ALTER ROLE farms_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'app_password')
+-- Pin the role to the least-privilege attributes even if it existed before
+-- (stripping any SUPERUSER/CREATEDB/CREATEROLE/BYPASSRLS/REPLICATION it may have
+-- carried), and rotate the password to the value passed in.
+SELECT format(
+  'ALTER ROLE farms_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE '
+  'NOBYPASSRLS NOREPLICATION PASSWORD %L', :'app_password')
 \gexec
 
 -- 2. Connect + read the schema, but not create in it. Grant CONNECT on whatever
@@ -56,3 +70,5 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO farms_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO farms_app;
+
+COMMIT;

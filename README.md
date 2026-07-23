@@ -315,17 +315,21 @@ so future migrations' tables are covered automatically). Run it once as the
 owner, passing the password as a psql variable so nothing secret is committed:
 
 ```bash
-psql "$OWNER_DATABASE_URL" \
-  -v app_password="$(openssl rand -base64 24)" \
+# Generate the password into a variable so you can RETAIN it for the runtime
+# config — the script only receives it as a psql variable, never from a file.
+APP_PASSWORD="$(openssl rand -base64 24)"
+psql "$OWNER_DATABASE_URL" -v "app_password=$APP_PASSWORD" \
   -f scripts/create_app_role.sql
 ```
 
-Then point the service at the restricted role (keep migrations running as the
-owner):
+The script runs in a single transaction (atomic), so a mid-run failure can't
+leave `farms_app` with a rotated password but missing grants. Then point the
+service at the restricted role (keep migrations running as the owner) by storing
+that same value in the secret manager / environment:
 
 ```bash
 APP_DATABASE__USERNAME=farms_app
-APP_DATABASE__PASSWORD=<the password you generated>
+APP_DATABASE__PASSWORD=$APP_PASSWORD
 ```
 
 Verify what a connection is actually running as:
