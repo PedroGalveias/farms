@@ -1,0 +1,28 @@
+meta {
+  name: Admin - List Product Suggestions
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{URL}}/admin/product-suggestions
+  body: none
+  auth: inherit
+}
+
+docs {
+  Moderation queue: the PENDING product suggestions awaiting review.
+  **Admin role required** (the session user must have the ADMIN role).
+
+  Each row carries the suggestion id, the farm, the suggested product slug, an
+  optional note, and who submitted it. Approve/reject via the sibling requests.
+
+  Responses:
+  - 200 OK: list of pending suggestions.
+  - 401/403: not authenticated / not an admin.
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

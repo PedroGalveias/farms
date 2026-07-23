@@ -5,9 +5,49 @@ meta {
 }
 
 get {
-  url: {{URL}}/farms
+  url: {{URL}}/farms?limit=20&offset=0
   body: none
   auth: inherit
+}
+
+params:query {
+  limit: 20
+  offset: 0
+  ~category: fruits,vegetables
+  ~product: strawberries,cherries
+  ~match: all
+  ~canton: ZH,BE
+  ~q: erdbeer
+  ~lat: 47.3769
+  ~lng: 8.5417
+  ~radius_km: 25
+  ~sort: nearest
+}
+
+docs {
+  The farm directory. Returns `{ "farms": [...], "next_cursor": "<offset>" | null }`;
+  a full page hands back the next offset as `next_cursor`.
+
+  Each farm carries its granular `products[]` (slug, name_de, name_en, group,
+  stock `status`) and a derived `categories[]`; `coordinates` is a `"lat,lng"`
+  string, and `distance_km` is present when `lat`/`lng` are supplied.
+
+  Query parameters (all optional; disabled ones above are prefixed `~`):
+  - `category`  — comma-separated group slugs; matches the group directly OR via
+    a product in it ("any of").
+  - `product`   — comma-separated product slugs.
+  - `match`     — `all` requires every listed product; otherwise "any of".
+  - `canton`    — comma-separated canton codes, e.g. `ZH,BE`.
+  - `q`         — free text over farm name, address and product names (German +
+    English).
+  - `lat`/`lng` — requester location; adds `distance_km` to each farm.
+  - `radius_km` — keep only farms within this many km of `lat`/`lng`.
+  - `sort`      — `newest` (default) | `name` | `canton` | `nearest` (needs
+    `lat`/`lng`).
+  - `limit`/`offset` — page size (clamped 1-100) and offset.
+
+  400 Bad Request on an unknown category/product slug, or `nearest`/`radius_km`
+  without `lat`/`lng`.
 }
 
 settings {

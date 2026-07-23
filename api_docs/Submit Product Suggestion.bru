@@ -1,0 +1,46 @@
+meta {
+  name: Submit Product Suggestion
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{URL}}/farms/{{id}}/product-suggestions
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "product": "strawberries",
+    "note": "Saw these at the farm stand last weekend."
+  }
+}
+
+vars:pre-request {
+  id: 9b67e2ef-2c4b-49c2-92d7-b2a3d88d2b61
+}
+
+docs {
+  Suggest that a farm carries a product. Community-driven; queued as PENDING for
+  admin moderation (see the Admin · Product Suggestions requests).
+
+  Body:
+  - `product`: a granular **product slug** (validated against the taxonomy).
+  - `note` (optional): free text; blank/absent is stored as NULL.
+
+  Responses:
+  - 201 Created / 200 OK: suggestion queued (idempotent per (farm, product,
+    submitter) while still PENDING).
+  - 400 Bad Request: unknown product slug or unknown farm id.
+  - 429 Too Many Requests: rate limited.
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

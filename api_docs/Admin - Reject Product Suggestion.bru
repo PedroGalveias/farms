@@ -1,0 +1,30 @@
+meta {
+  name: Admin - Reject Product Suggestion
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{URL}}/admin/product-suggestions/{{suggestion_id}}/reject
+  body: none
+  auth: inherit
+}
+
+vars:pre-request {
+  suggestion_id: 00000000-0000-0000-0000-000000000000
+}
+
+docs {
+  Reject a PENDING suggestion: marks it REJECTED (no farm/product link created),
+  recording the reviewer. **Admin role required.**
+
+  Responses:
+  - 200 OK: rejected.
+  - 404 Not Found: no PENDING suggestion with that id.
+  - 401/403: not authenticated / not an admin.
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

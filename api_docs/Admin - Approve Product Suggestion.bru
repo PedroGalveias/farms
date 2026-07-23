@@ -1,0 +1,30 @@
+meta {
+  name: Admin - Approve Product Suggestion
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{URL}}/admin/product-suggestions/{{suggestion_id}}/approve
+  body: none
+  auth: inherit
+}
+
+vars:pre-request {
+  suggestion_id: 00000000-0000-0000-0000-000000000000
+}
+
+docs {
+  Approve a PENDING suggestion: links the product to the farm (as AVAILABLE) and
+  marks the suggestion APPROVED, recording the reviewer. **Admin role required.**
+
+  Responses:
+  - 200 OK: approved and applied.
+  - 404 Not Found: no PENDING suggestion with that id.
+  - 401/403: not authenticated / not an admin.
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}
