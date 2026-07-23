@@ -298,6 +298,47 @@ cargo sqlx prepare --workspace --all -- --all-targets
 SKIP_DOCKER=true ./scripts/init_db.sh
 ```
 
+### Production database role (least privilege)
+
+The service **does not run migrations** — those are applied out-of-band by the
+database owner (`sqlx migrate run` / [`scripts/render_db_migrate.py`](scripts/render_db_migrate.py)).
+At runtime it therefore needs only DML, so it should **not** connect as a
+superuser or as the database owner. On managed Postgres (e.g. Render) the
+credentials you are given are never a cluster **superuser**, but they *are* the
+database **owner** — more than the running service needs.
+
+[`scripts/create_app_role.sql`](scripts/create_app_role.sql) provisions a
+dedicated `farms_app` login role with **no superuser / createdb / createrole**,
+**no ownership**, and **no CREATE on the schema** — just
+`SELECT/INSERT/UPDATE/DELETE` on the app tables (plus `ALTER DEFAULT PRIVILEGES`
+so future migrations' tables are covered automatically). Run it once as the
+owner, passing the password as a psql variable so nothing secret is committed:
+
+```bash
+# Generate the password into a variable so you can RETAIN it for the runtime
+# config — the script only receives it as a psql variable, never from a file.
+APP_PASSWORD="$(openssl rand -base64 24)"
+psql "$OWNER_DATABASE_URL" -v "app_password=$APP_PASSWORD" \
+  -f scripts/create_app_role.sql
+```
+
+The script runs in a single transaction (atomic), so a mid-run failure can't
+leave `farms_app` with a rotated password but missing grants. Then point the
+service at the restricted role (keep migrations running as the owner) by storing
+that same value in the secret manager / environment:
+
+```bash
+APP_DATABASE__USERNAME=farms_app
+APP_DATABASE__PASSWORD=$APP_PASSWORD
+```
+
+Verify what a connection is actually running as:
+
+```sql
+-- expect: rolsuper = f (and, ideally, not the database owner)
+SELECT current_user, rolsuper FROM pg_roles WHERE rolname = current_user;
+```
+
 ## Docker Deployment
 
 Build and run using Docker:
