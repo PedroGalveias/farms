@@ -20,21 +20,30 @@ body:json {
     "address": "Landhausweg 19, 5000 Aarau",
     "canton": "AG",
     "coordinates": "47.3925,8.0457",
-    "categories": [
-      "Organic",
-      "Fruit",
-      "Vegetables",
-      "Eggs",
-      "Flowers",
-      "Apple Juice",
-      "Meat",
-      "Jam",
-      "Bread",
-      "IP-Suisse",
-      "Ecological performance test (PEP)"
-    ],
+    "categories": ["fruits", "vegetables", "dairy"],
+    "products": ["apples", "strawberries", "eggs"],
     "idempotency_key": "95c53812-afd8-48ee-8d8c-3a35fa652ff7"
   }
+}
+
+docs {
+  Create a farm. Classification is taxonomy-aware:
+
+  - `categories`: coarse **group slugs** validated against the taxonomy
+    snapshot. Valid values: `fruits`, `vegetables`, `dairy`, `meat-poultry`,
+    `preserves`, `honey-sweeteners`, `drinks`, `bakery`, `flowers-plants`,
+    `nuts-oils`, `grains`, `fish-seafood`, `other`. Use when only group-level
+    classification is known.
+  - `products`: granular **product slugs** (e.g. `apples`, `strawberries`,
+    `eggs`), also validated against the snapshot.
+
+  At least one of `categories` / `products` is required. `coordinates` is a
+  `"lat,lng"` string. `idempotency_key` is a UUID that makes retries safe.
+
+  Responses:
+  - 201 Created (or the cached response on an idempotent retry).
+  - 400 Bad Request: unknown category/product slug, invalid canton/coordinates,
+    or no classification supplied.
 }
 
 settings {
