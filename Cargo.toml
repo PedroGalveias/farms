@@ -26,9 +26,9 @@ actix-web = "4.14"
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
 
 # Databases
-redis = { version = "1.3", features = [
+redis = { version = "1.4", features = [
     "tokio-rustls-comp",
-    "connection-manager",
+    "connection-manager"
 ] }
 deadpool-redis = { version = "0.22", features = ["serde", "rt_tokio_1"] }
 actix-session = { version = "0.11", features = [
@@ -52,7 +52,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde-aux = "4.7"
 rmp-serde = "1.3"
-unicode-segmentation = "1.13.0"
+unicode-segmentation = "1.13"
 
 # Logging
 tracing = { version = "0.1", features = ["log"] }
@@ -64,7 +64,11 @@ tracing-actix-web = ">=0.7.22"
 # OpenTelemetry (optional)
 opentelemetry = { version = "0.32", features = ["trace", "metrics"], optional = true }
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "trace", "metrics"], optional = true }
-opentelemetry-otlp = { version = "0.32", features = ["trace", "metrics", "grpc-tonic"], optional = true }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+    "trace", "metrics", "internal-logs",
+    "grpc-tonic", "tls-ring", "tls-roots",
+    "http-proto", "reqwest-blocking-client", "reqwest-rustls"
+], optional = true }
 tracing-opentelemetry = { version = "0.33", optional = true }
 
 # Utilities
@@ -84,7 +88,7 @@ argon2 = { version = "0.5", features = ["std"] }
 reqwest = { version = "0.13", default-features = false, features = [
     "json",
     "cookies",
-    "rustls",
+    "rustls"
 ] }
 sha2 = "0.11"      # SHA-256 for verification token hashing
 hex = "0.4"        # hex-encode token hashes for storage

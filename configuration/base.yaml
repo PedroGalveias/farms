@@ -35,6 +35,7 @@ telemetry:
   service_name: "farms-service"
   endpoint: "http://localhost:4317" #OTLP gRPC endpoint
   environment: "local"
+  protocol: "grpc"
 email_client:
   # Default to the 'log' backend: emails are written to the application log
   # instead of being sent, so local development needs no real provider. The

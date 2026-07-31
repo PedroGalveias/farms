@@ -1,8 +1,12 @@
+#[cfg(feature = "opentelemetry")]
+use crate::configuration::TelemetryProtocol;
 use crate::configuration::{LogFormat, LoggingSettings, TelemetrySettings};
 #[cfg(feature = "opentelemetry")]
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
 #[cfg(feature = "opentelemetry")]
-use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{
+    SpanExporter, WithExportConfig, WithTonicConfig, tonic_types::transport::ClientTlsConfig,
+};
 #[cfg(feature = "opentelemetry")]
 use opentelemetry_sdk::{
     Resource,
@@ -163,17 +167,32 @@ fn init_opentelemetry(settings: &TelemetrySettings) -> Result<Tracer, anyhow::Er
     // Create resource with service information
     let resource = Resource::builder()
         .with_attributes(vec![
-            KeyValue::new("service.name", "farms-service"),
-            KeyValue::new("deployment.environment", "production"),
+            KeyValue::new("service.name", settings.service_name.clone()),
+            KeyValue::new("deployment.environment", settings.environment.clone()),
         ])
         .build();
 
-    // Configure OTLP exporter with gRPC
-    let exporter = SpanExporter::builder()
-        .with_tonic()
-        .with_endpoint(&settings.endpoint)
-        .build()
-        .expect("Failed to build OpenTelemetry trace exporter");
+    // Configure OTLP exporter with gRPC or Http
+    let exporter = match &settings.protocol {
+        TelemetryProtocol::Grpc => {
+            let tls_config = ClientTlsConfig::new()
+                .with_native_roots()
+                .assume_http2(true);
+
+            SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint(&settings.endpoint)
+                .with_tls_config(tls_config)
+                .build()?
+        }
+        TelemetryProtocol::Http => SpanExporter::builder()
+            .with_http()
+            .with_endpoint(format!(
+                "{}/v1/traces",
+                settings.endpoint.trim_end_matches('/')
+            ))
+            .build()?,
+    };
 
     // Build the tracer provider
     let tracer_provider = SdkTracerProvider::builder()
@@ -204,7 +223,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::configuration::LoggingLevel;
+    use crate::configuration::{LoggingLevel, TelemetryProtocol};
 
     #[test]
     fn test_telemetry_initialization_without_opentelemetry() {
@@ -218,6 +237,7 @@ mod tests {
             service_name: "test-service".to_string(),
             endpoint: "http://localhost:4317".to_string(),
             environment: "test".to_string(),
+            protocol: TelemetryProtocol::Grpc,
         };
 
         // This shouldn't panic

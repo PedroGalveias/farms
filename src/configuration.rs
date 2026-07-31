@@ -81,11 +81,24 @@ pub struct LoggingSettings {
 }
 
 #[derive(serde::Deserialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum TelemetryProtocol {
+    Grpc,
+    Http,
+}
+
+fn default_telemetry_protocol() -> TelemetryProtocol {
+    TelemetryProtocol::Grpc
+}
+
+#[derive(serde::Deserialize, Clone)]
 pub struct TelemetrySettings {
     pub enabled: bool,
     pub service_name: String,
     pub endpoint: String,
     pub environment: String,
+    #[serde(default = "default_telemetry_protocol")]
+    pub protocol: TelemetryProtocol,
 }
 
 #[derive(serde::Deserialize, Clone)]
@@ -111,7 +124,6 @@ pub enum EmailClientEngine {
     /// Local development: log the email instead of sending it.
     Log,
 }
-
 impl EmailClientEngine {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -120,7 +132,6 @@ impl EmailClientEngine {
         }
     }
 }
-
 impl TryFrom<String> for EmailClientEngine {
     type Error = String;
 
@@ -136,7 +147,6 @@ impl TryFrom<String> for EmailClientEngine {
         }
     }
 }
-
 impl<'de> serde::Deserialize<'de> for EmailClientEngine {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -270,7 +280,6 @@ impl<'de> serde::Deserialize<'de> for IdempotencyEngine {
         IdempotencyEngine::try_from(s).map_err(serde::de::Error::custom)
     }
 }
-
 impl DatabaseSettings {
     pub fn without_db(&self) -> PgConnectOptions {
         let ssl_mode = if self.require_ssl {
