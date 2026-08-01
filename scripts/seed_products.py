@@ -43,24 +43,32 @@ DATA_PATH = os.path.join(
 FARM_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://farms.app/seed")
 SEED_CREATED_AT = "2026-06-01T00:00:00Z"
 
-# The 13 canonical groups: German key (the dataset's key) -> (English, slug).
-# Slugs are the stable public identity the frontend keys its display on.
+# The 13 canonical groups, with their display labels.
+#
+# (German key, English, slug, French, Italian, Romansh). The German key is the
+# dataset's own key and doubles as the canonical German label; the slug is the
+# stable public identity that filtering and the frontend key on.
+#
+# The fr/it/rm labels are authored translations carried over from the web
+# frontend, which held them before the API did. They live here because this
+# script owns the taxonomy's content — a migration cannot seed them, since
+# migrations run before this does and would update an empty table.
 GROUPS = [
-    ("Früchte", "Fruits", "fruits"),
-    ("Gemüse", "Vegetables", "vegetables"),
-    ("Milchprodukte", "Dairy", "dairy"),
-    ("Fleisch und Geflügel", "Meat & poultry", "meat-poultry"),
-    ("Verarbeitete und haltbare Produkte", "Preserves & processed", "preserves"),
-    ("Honig und Süßstoffe", "Honey & sweeteners", "honey-sweeteners"),
-    ("Getränke", "Drinks", "drinks"),
-    ("Backwaren und Gebäck", "Bakery", "bakery"),
-    ("Blumen und Pflanzen", "Flowers & plants", "flowers-plants"),
-    ("Nüsse, Samen und Öle", "Nuts, seeds & oils", "nuts-oils"),
-    ("Getreide und Cerealien", "Grains & cereals", "grains"),
-    ("Fisch und Meeresfrüchte", "Fish & seafood", "fish-seafood"),
-    ("Sonstiges", "Other", "other"),
+    ('Früchte', 'Fruits', 'fruits', 'Fruits', 'Frutta', 'Fritgs'),
+    ('Gemüse', 'Vegetables', 'vegetables', 'Légumes', 'Verdura', 'Verduras'),
+    ('Milchprodukte', 'Dairy', 'dairy', 'Produits laitiers', 'Latticini', 'Products da latg'),
+    ('Fleisch und Geflügel', 'Meat & poultry', 'meat-poultry', 'Viande et volaille', 'Carne e pollame', 'Charn e pulam'),
+    ('Verarbeitete und haltbare Produkte', 'Preserves & processed', 'preserves', 'Produits transformés et conserves', 'Prodotti trasformati e conserve', 'Products transformads e conservads'),
+    ('Honig und Süßstoffe', 'Honey & sweeteners', 'honey-sweeteners', 'Miel et édulcorants', 'Miele e dolcificanti', 'Mel e dultschadiras'),
+    ('Getränke', 'Drinks', 'drinks', 'Boissons', 'Bevande', 'Bavrondas'),
+    ('Backwaren und Gebäck', 'Bakery', 'bakery', 'Boulangerie', 'Prodotti da forno', 'Ar da furnaria'),
+    ('Blumen und Pflanzen', 'Flowers & plants', 'flowers-plants', 'Fleurs et plantes', 'Fiori e piante', 'Flurs e plantas'),
+    ('Nüsse, Samen und Öle', 'Nuts, seeds & oils', 'nuts-oils', 'Noix, graines et huiles', 'Noci, semi e oli', 'Nuschs, sems ed ieli'),
+    ('Getreide und Cerealien', 'Grains & cereals', 'grains', 'Céréales', 'Cereali', 'Cereals'),
+    ('Fisch und Meeresfrüchte', 'Fish & seafood', 'fish-seafood', 'Poisson et fruits de mer', 'Pesce e frutti di mare', 'Pesch e fritgs da mar'),
+    ('Sonstiges', 'Other', 'other', 'Autres', 'Altro', 'Auter'),
 ]
-GROUP_SLUG_BY_DE = {de: slug for de, _en, slug in GROUPS}
+GROUP_SLUG_BY_DE = {row[0]: row[2] for row in GROUPS}
 
 VALID_CANTONS = {
     "AG", "AI", "AR", "BE", "BL", "BS", "FR", "GE", "GL", "GR", "JU", "LU",
@@ -217,14 +225,18 @@ def main() -> int:
 
         out("-- Category groups.\n")
         cat_values = ",\n  ".join(
-            f"({sql_str(de)}, {sql_str(slug)}, {i})"
-            for i, (de, _en, slug) in enumerate(GROUPS)
+            f"({sql_str(de)}, {sql_str(slug)}, {i}, {sql_str(en)}, "
+            f"{sql_str(fr)}, {sql_str(it)}, {sql_str(rm)})"
+            for i, (de, en, slug, fr, it, rm) in enumerate(GROUPS)
         )
         out(
-            "INSERT INTO product_categories (key_de, slug, display_order)\n"
+            "INSERT INTO product_categories\n"
+            "  (key_de, slug, display_order, name_en, name_fr, name_it, name_rm)\n"
             f"VALUES\n  {cat_values}\n"
             "ON CONFLICT (key_de) DO UPDATE\n"
-            "  SET slug = EXCLUDED.slug, display_order = EXCLUDED.display_order;\n\n"
+            "  SET slug = EXCLUDED.slug, display_order = EXCLUDED.display_order,\n"
+            "      name_en = EXCLUDED.name_en, name_fr = EXCLUDED.name_fr,\n"
+            "      name_it = EXCLUDED.name_it, name_rm = EXCLUDED.name_rm;\n\n"
         )
 
         out(f"-- Products ({len(products)} granular).\n")

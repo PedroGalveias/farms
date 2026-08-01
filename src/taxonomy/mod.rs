@@ -32,6 +32,17 @@ pub struct TaxonomySnapshot {
     /// Category (group) slug -> id, for validating category filters and
     /// resolving group-level farm associations.
     category_by_slug: HashMap<String, i16>,
+    /// Every category group, in display order, with its labels. Held in memory
+    /// because it is thirteen rows that change only on deploy, and serving
+    /// /taxonomy from a snapshot avoids a query per request.
+    categories: Vec<CategoryInfo>,
+}
+
+/// A category group and the labels it can be displayed with.
+#[derive(Clone, Debug)]
+pub struct CategoryInfo {
+    pub slug: String,
+    pub labels: LocalisedLabels,
 }
 
 impl TaxonomySnapshot {
@@ -65,19 +76,42 @@ impl TaxonomySnapshot {
             by_id.insert(row.id, info);
         }
 
-        let category_rows = sqlx::query!(r#"SELECT id, slug FROM product_categories"#)
-            .fetch_all(pool)
-            .await?;
+        let category_rows = sqlx::query!(
+            r#"
+            SELECT id, slug, key_de, name_en, name_fr, name_it, name_rm
+            FROM product_categories
+            ORDER BY display_order, slug
+            "#
+        )
+        .fetch_all(pool)
+        .await?;
         let mut category_by_slug = HashMap::with_capacity(category_rows.len());
+        let mut categories = Vec::with_capacity(category_rows.len());
         for row in category_rows {
-            category_by_slug.insert(row.slug, row.id);
+            category_by_slug.insert(row.slug.clone(), row.id);
+            categories.push(CategoryInfo {
+                slug: row.slug,
+                labels: LocalisedLabels {
+                    de: row.key_de,
+                    en: row.name_en,
+                    fr: row.name_fr,
+                    it: row.name_it,
+                    rm: row.name_rm,
+                },
+            });
         }
 
         Ok(Self {
             by_slug,
             by_id,
             category_by_slug,
+            categories,
         })
+    }
+
+    /// Every category group, in display order.
+    pub fn categories(&self) -> &[CategoryInfo] {
+        &self.categories
     }
 
     /// Resolve a slug to a product id, or `None` if the slug is unknown.

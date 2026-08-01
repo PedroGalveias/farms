@@ -1,0 +1,98 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, slug, key_de, name_en, name_fr, name_it, name_rm\n            FROM product_categories\n            ORDER BY display_order, slug\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "key_de",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "key_de"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name_en",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "name_en"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "name_fr",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "name_fr"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "name_it",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "name_it"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "name_rm",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "name_rm"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f828cceea175f108ee7c14c6f4ba622b2e0e9b1bdd4336557dcb045098bf1c17"
+}
