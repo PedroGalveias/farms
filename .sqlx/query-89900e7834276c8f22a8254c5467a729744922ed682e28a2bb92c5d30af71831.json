@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO products (category_id, key_de, slug, name_en)\n        VALUES ($1, $2, $3, $4)\n        RETURNING id\n        ",
+  "query": "\n        INSERT INTO products\n            (category_id, key_de, slug, name_en, name_fr, name_it, name_rm)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING id\n        ",
   "describe": {
     "columns": [
       {
@@ -20,6 +20,9 @@
         "Int2",
         "Text",
         "Text",
+        "Text",
+        "Text",
+        "Text",
         "Text"
       ]
     },
@@ -27,5 +30,5 @@
       false
     ]
   },
-  "hash": "37448ebeb89856b53728e918dab2a092cabc44f5f2b05ad0b1a0ad20c3ba3b00"
+  "hash": "89900e7834276c8f22a8254c5467a729744922ed682e28a2bb92c5d30af71831"
 }

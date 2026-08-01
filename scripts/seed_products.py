@@ -85,6 +85,16 @@ def slugify(value: str) -> str:
     return value or "item"
 
 
+def normalise_label(value) -> str | None:
+    """A trimmed label, or None when there is nothing to display.
+
+    Blank and NULL must not diverge: the database rejects blank labels, and a
+    present-but-empty one would report itself as a translation and then render
+    as nothing.
+    """
+    return (value or "").strip() or None
+
+
 def sql_str(value) -> str:
     """A single-quoted SQL string literal (or NULL)."""
     if value is None:
@@ -124,8 +134,8 @@ def main() -> int:
     locations = raw["locations"] if isinstance(raw, dict) else raw
 
     # --- Build the product taxonomy (deduped, stable slugs) -----------------
-    # product key_de -> (slug, name_en, group_slug)
-    products: dict[str, tuple[str, str, str]] = {}
+    # product key_de -> (slug, group_slug, {lang: label})
+    products: dict[str, tuple[str, str, dict[str, str | None]]] = {}
     used_slugs: set[str] = set()
     unknown_groups: set[str] = set()
     # A product's first group assignment wins; record any later record that
@@ -141,26 +151,32 @@ def main() -> int:
                 continue
             for item in items:
                 key_de = item["de"] if isinstance(item, dict) else item
-                name_en = item.get("en", key_de) if isinstance(item, dict) else item
-                # Blank names become SQL NULL: empty string and NULL must not
-                # diverge downstream (a Some("") defeats the frontend's
-                # name_en ?? fallback and renders a blank label).
-                name_en = (name_en or "").strip() or None
+                # Every language the dataset may carry. Only de/en are populated
+                # today (see #162); reading them all means a translation starts
+                # flowing the moment it is authored, with no code change here.
+                labels = {
+                    lang: normalise_label(
+                        item.get(lang) if isinstance(item, dict) else None
+                    )
+                    for lang in ("en", "fr", "it", "rm")
+                }
                 if key_de in products:
-                    existing_group = products[key_de][2]
+                    existing_group = products[key_de][1]
                     if existing_group != group_slug:
                         group_conflicts.add((key_de, existing_group, group_slug))
                     continue
-                # Slug from the English name when present, else the German key —
-                # never slugify(None) (name_en is None for a blank translation).
-                base = slugify(name_en or key_de)
+                # Slug from the English name when present, else the German key.
+                # Deliberately unchanged from before these columns existed:
+                # slugs are the public, stable identity of a product, so they
+                # must not move when a translation is added or removed.
+                base = slugify(labels["en"] or key_de)
                 slug = base
                 n = 2
                 while slug in used_slugs:
                     slug = f"{base}-{n}"
                     n += 1
                 used_slugs.add(slug)
-                products[key_de] = (slug, name_en, group_slug)
+                products[key_de] = (slug, group_slug, labels)
 
     if unknown_groups:
         sys.stderr.write(
@@ -241,16 +257,34 @@ def main() -> int:
 
         out(f"-- Products ({len(products)} granular).\n")
         prod_values = ",\n  ".join(
-            f"({sql_str(group_slug)}, {sql_str(key_de)}, {sql_str(slug)}, {sql_str(name_en)})"
-            for key_de, (slug, name_en, group_slug) in products.items()
+            "("
+            + ", ".join(
+                sql_str(v)
+                for v in (
+                    group_slug,
+                    key_de,
+                    slug,
+                    labels["en"],
+                    labels["fr"],
+                    labels["it"],
+                    labels["rm"],
+                )
+            )
+            + ")"
+            for key_de, (slug, group_slug, labels) in products.items()
         )
         out(
-            "INSERT INTO products (category_id, key_de, slug, name_en)\n"
-            "SELECT c.id, v.key_de, v.slug, v.name_en\n"
-            f"FROM (VALUES\n  {prod_values}\n) AS v(group_slug, key_de, slug, name_en)\n"
+            "INSERT INTO products\n"
+            "  (category_id, key_de, slug, name_en, name_fr, name_it, name_rm)\n"
+            "SELECT c.id, v.key_de, v.slug,\n"
+            "       v.name_en, v.name_fr, v.name_it, v.name_rm\n"
+            f"FROM (VALUES\n  {prod_values}\n"
+            ") AS v(group_slug, key_de, slug, name_en, name_fr, name_it, name_rm)\n"
             "JOIN product_categories c ON c.slug = v.group_slug\n"
             "ON CONFLICT (key_de) DO UPDATE\n"
             "  SET slug = EXCLUDED.slug, name_en = EXCLUDED.name_en,\n"
+            "      name_fr = EXCLUDED.name_fr, name_it = EXCLUDED.name_it,\n"
+            "      name_rm = EXCLUDED.name_rm,\n"
             "      category_id = EXCLUDED.category_id;\n\n"
         )
 

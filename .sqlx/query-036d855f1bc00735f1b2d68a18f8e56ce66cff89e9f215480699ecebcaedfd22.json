@@ -1,0 +1,110 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                p.id,\n                p.slug,\n                p.key_de,\n                p.name_en,\n                p.name_fr,\n                p.name_it,\n                p.name_rm,\n                c.slug AS \"group_slug!\"\n            FROM products p\n            JOIN product_categories c ON c.id = p.category_id\n            ORDER BY c.display_order, c.slug, p.slug\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "key_de",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "key_de"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name_en",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "name_en"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "name_fr",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "name_fr"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "name_it",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "name_it"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "name_rm",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "products",
+            "name": "name_rm"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "group_slug!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "slug"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "036d855f1bc00735f1b2d68a18f8e56ce66cff89e9f215480699ecebcaedfd22"
+}
