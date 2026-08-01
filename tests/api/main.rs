@@ -11,3 +11,4 @@ mod moderation;
 mod products;
 mod registration;
 mod suggestions;
+mod taxonomy;

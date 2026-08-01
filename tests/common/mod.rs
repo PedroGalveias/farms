@@ -488,8 +488,21 @@ pub struct TestTaxonomy {
 /// Insert the standard test taxonomy. Called by `spawn_app` before the app
 /// boots so the app's startup snapshot resolves these slugs.
 async fn seed_standard_taxonomy(pool: &PgPool) {
-    let fruits = insert_test_category(pool, "Früchte", "fruits", 0).await;
-    let vegetables = insert_test_category(pool, "Gemüse", "vegetables", 1).await;
+    let fruits = insert_test_category(
+        pool, "Früchte", "fruits", 0, "Fruits", "Fruits", "Frutta", "Fritgs",
+    )
+    .await;
+    let vegetables = insert_test_category(
+        pool,
+        "Gemüse",
+        "vegetables",
+        1,
+        "Vegetables",
+        "Légumes",
+        "Verdura",
+        "Verduras",
+    )
+    .await;
     insert_test_product(pool, fruits, "Erdbeeren", "strawberries", "Strawberries").await;
     insert_test_product(pool, fruits, "Kirschen", "cherries", "Cherries").await;
     insert_test_product(pool, vegetables, "Broccoli", "broccoli", "Broccoli").await;
@@ -519,16 +532,36 @@ pub async fn seed_test_taxonomy(pool: &PgPool) -> TestTaxonomy {
 }
 
 #[allow(dead_code)]
-async fn insert_test_category(pool: &PgPool, key_de: &str, slug: &str, display_order: i16) -> i16 {
+/// Insert a category with its full set of display labels.
+///
+/// The labels are passed in rather than left null so tests exercise real
+/// localised output. Seeding German only would let a bug where every language
+/// silently falls back to German pass unnoticed.
+#[allow(clippy::too_many_arguments)]
+async fn insert_test_category(
+    pool: &PgPool,
+    key_de: &str,
+    slug: &str,
+    display_order: i16,
+    name_en: &str,
+    name_fr: &str,
+    name_it: &str,
+    name_rm: &str,
+) -> i16 {
     sqlx::query!(
         r#"
-        INSERT INTO product_categories (key_de, slug, display_order)
-        VALUES ($1, $2, $3)
+        INSERT INTO product_categories
+            (key_de, slug, display_order, name_en, name_fr, name_it, name_rm)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         "#,
         key_de,
         slug,
         display_order,
+        name_en,
+        name_fr,
+        name_it,
+        name_rm,
     )
     .fetch_one(pool)
     .await

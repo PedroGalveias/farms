@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO product_categories (key_de, slug, display_order)\n        VALUES ($1, $2, $3)\n        RETURNING id\n        ",
+  "query": "\n        INSERT INTO product_categories\n            (key_de, slug, display_order, name_en, name_fr, name_it, name_rm)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        RETURNING id\n        ",
   "describe": {
     "columns": [
       {
@@ -19,12 +19,16 @@
       "Left": [
         "Text",
         "Text",
-        "Int2"
+        "Int2",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
       false
     ]
   },
-  "hash": "5d07fd76289a43db852858a2aff9898cbab6bba7dea0b90e625a4936a78e0cbf"
+  "hash": "46cfd5c8e140198c52804ebe5a12b73d6ea66cbe77cb9f222d806801dc555102"
 }

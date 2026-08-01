@@ -2,7 +2,7 @@ use crate::configuration::{
     DatabaseSettings, RedisSettings, SessionSameSite, SessionSettings, Settings,
 };
 use crate::email_client::EmailClient;
-use crate::routes::{admin, authentication, farms, health_check, suggestions};
+use crate::routes::{admin, authentication, farms, health_check, suggestions, taxonomy};
 use actix_session::{
     SessionMiddleware,
     config::{CookieContentSecurity, PersistentSession, TtlExtensionPolicy},
@@ -185,6 +185,7 @@ pub async fn run(
             .route("/farms", web::post().to(farms::create))
             .route("/farms", web::get().to(farms::get_all))
             .route("/farms/{id}", web::get().to(farms::get_by_id))
+            .route("/taxonomy", web::get().to(taxonomy::get_taxonomy))
             .route(
                 "/farms/{id}/product-suggestions",
                 web::post().to(suggestions::submit_suggestion),
