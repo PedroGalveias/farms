@@ -15,3 +15,21 @@ ALTER TABLE product_categories
     ADD COLUMN name_fr text,
     ADD COLUMN name_it text,
     ADD COLUMN name_rm text;
+
+-- "Missing translation" has exactly one spelling here: NULL.
+--
+-- Without this, `text` also admits '' and '   ', which read as present but
+-- display as nothing: /taxonomy would answer with an empty `name` and
+-- `translated: true`, and the fallback chain would stop on a value it should
+-- have skipped. `key_de` is included because the chain terminates on it — a
+-- blank canonical label defeats the guarantee that a caller always gets
+-- something readable back.
+ALTER TABLE product_categories
+    ADD CONSTRAINT product_categories_labels_not_blank
+        CHECK (
+            btrim(key_de) <> ''
+                AND (name_en IS NULL OR btrim(name_en) <> '')
+                AND (name_fr IS NULL OR btrim(name_fr) <> '')
+                AND (name_it IS NULL OR btrim(name_it) <> '')
+                AND (name_rm IS NULL OR btrim(name_rm) <> '')
+            );

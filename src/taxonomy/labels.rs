@@ -20,6 +20,17 @@ pub struct LocalisedLabels {
     pub rm: Option<String>,
 }
 
+/// A column counts as a translation only when it holds something printable.
+///
+/// A blank cell is a missing translation wearing the costume of a present one:
+/// it would resolve to an empty label and be reported as `translated: true`.
+/// The database rejects blanks (see the migration adding these columns), but
+/// this type is also built by the seeder and by tests, so it enforces its own
+/// invariant rather than trusting a constraint it cannot see.
+fn present(value: &Option<String>) -> Option<&str> {
+    value.as_deref().filter(|text| !text.trim().is_empty())
+}
+
 impl LocalisedLabels {
     /// The label in `language`, or the closest available substitute.
     ///
@@ -36,13 +47,13 @@ impl LocalisedLabels {
     pub fn resolve(&self, language: Language) -> &str {
         let requested = match language {
             Language::De => return &self.de,
-            Language::En => self.en.as_deref(),
-            Language::Fr => self.fr.as_deref(),
-            Language::It => self.it.as_deref(),
-            Language::Rm => self.rm.as_deref(),
+            Language::En => present(&self.en),
+            Language::Fr => present(&self.fr),
+            Language::It => present(&self.it),
+            Language::Rm => present(&self.rm),
         };
 
-        requested.or(self.en.as_deref()).unwrap_or(&self.de)
+        requested.or(present(&self.en)).unwrap_or(&self.de)
     }
 
     /// Whether `language` has its own translation, as opposed to being served a
@@ -50,10 +61,10 @@ impl LocalisedLabels {
     pub fn has(&self, language: Language) -> bool {
         match language {
             Language::De => true,
-            Language::En => self.en.is_some(),
-            Language::Fr => self.fr.is_some(),
-            Language::It => self.it.is_some(),
-            Language::Rm => self.rm.is_some(),
+            Language::En => present(&self.en).is_some(),
+            Language::Fr => present(&self.fr).is_some(),
+            Language::It => present(&self.it).is_some(),
+            Language::Rm => present(&self.rm).is_some(),
         }
     }
 }
@@ -132,6 +143,66 @@ mod tests {
         };
         for language in Language::ALL {
             assert!(!labels.resolve(language).is_empty());
+        }
+    }
+
+    #[test]
+    fn a_blank_translation_counts_as_missing() {
+        // `text` admits '' and '   '. A blank column is a missing translation
+        // that merely looks present, and taking it would end the fallback chain
+        // on a label that renders as nothing at all.
+        let labels = LocalisedLabels {
+            de: "Beeren".into(),
+            en: Some("Berries".into()),
+            fr: Some(String::new()),
+            it: Some("   ".into()),
+            rm: Some("\t\n".into()),
+        };
+        for language in [Language::Fr, Language::It, Language::Rm] {
+            assert_eq!(
+                labels.resolve(language),
+                "Berries",
+                "{language} should skip its blank column and fall back"
+            );
+            assert!(!labels.has(language), "{language} is not translated");
+        }
+    }
+
+    #[test]
+    fn a_blank_english_column_does_not_break_the_chain() {
+        // English is both a requested language and the middle of the fallback
+        // chain, so a blank there has two chances to leak an empty label.
+        let labels = LocalisedLabels {
+            de: "Sonstiges".into(),
+            en: Some("  ".into()),
+            ..Default::default()
+        };
+        assert_eq!(labels.resolve(Language::En), "Sonstiges");
+        assert_eq!(labels.resolve(Language::Fr), "Sonstiges");
+        assert!(!labels.has(Language::En));
+    }
+
+    #[test]
+    fn no_arrangement_of_blanks_yields_an_empty_label() {
+        // The invariant `resolve` documents, checked against every combination
+        // of blank and absent rather than the one shape that first came to mind.
+        let blanks = [None, Some(String::new()), Some("   ".into())];
+        for en in &blanks {
+            for fr in &blanks {
+                let labels = LocalisedLabels {
+                    de: "Gemüse".into(),
+                    en: en.clone(),
+                    fr: fr.clone(),
+                    ..Default::default()
+                };
+                for language in Language::ALL {
+                    assert_eq!(
+                        labels.resolve(language),
+                        "Gemüse",
+                        "en={en:?} fr={fr:?} {language}"
+                    );
+                }
+            }
         }
     }
 

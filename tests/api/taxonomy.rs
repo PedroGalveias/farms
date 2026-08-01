@@ -127,3 +127,64 @@ async fn is_reachable_without_authentication() {
 
     assert_eq!(response.status().as_u16(), StatusCode::OK.as_u16());
 }
+
+/// Whether a failure was the label constraint rather than some unrelated error.
+///
+/// Asserting only `is_err()` would let this test pass for the wrong reason — a
+/// typo'd column or a unique violation would look identical.
+fn violates_the_label_constraint(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .and_then(|db| db.constraint())
+        .is_some_and(|name| name == "product_categories_labels_not_blank")
+}
+
+#[tokio::test]
+async fn the_database_rejects_a_blank_label() {
+    // Everything /taxonomy promises about `name` rests on NULL being the only
+    // spelling of "missing". Postgres `text` would otherwise accept '' and
+    // '   ', which read as translated and render as nothing at all.
+    let app = spawn_app(IdempotencyEngine::None).await;
+
+    // Static SQL per case: the column name varies, and interpolating it would
+    // (rightly) trip the dynamic-SQL lint.
+    let rejected = [
+        (
+            "an empty translation",
+            "INSERT INTO product_categories (key_de, slug, display_order, name_en)
+             VALUES ('Kanonisch', 'blank-en', 0, '')",
+        ),
+        (
+            "a whitespace-only translation",
+            "INSERT INTO product_categories (key_de, slug, display_order, name_fr)
+             VALUES ('Kanonisch', 'blank-fr', 0, '   ')",
+        ),
+        (
+            "a blank canonical label",
+            "INSERT INTO product_categories (key_de, slug, display_order, name_en)
+             VALUES ('', 'blank-de', 0, 'Canonical')",
+        ),
+    ];
+
+    for (description, statement) in rejected {
+        let error = sqlx::query(statement)
+            .execute(&app.db_pool)
+            .await
+            .expect_err(&format!("{description} must be rejected"));
+
+        assert!(
+            violates_the_label_constraint(&error),
+            "{description} should trip the label constraint, got: {error}"
+        );
+    }
+
+    // NULL stays the supported way to say "not translated yet" — the constraint
+    // must not have made the columns effectively mandatory.
+    sqlx::query(
+        "INSERT INTO product_categories (key_de, slug, display_order, name_en)
+         VALUES ('Kanonisch', 'null-en', 0, NULL)",
+    )
+    .execute(&app.db_pool)
+    .await
+    .expect("an untranslated category must still be insertable");
+}
