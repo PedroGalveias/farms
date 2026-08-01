@@ -1,4 +1,5 @@
 use crate::domain::farm::{Address, Canton, Name, Point, StockStatus};
+use crate::domain::language::Language;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -45,12 +46,36 @@ pub struct FarmResponse {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+/// A single farm plus the language it was resolved for.
+///
+/// The list endpoint echoes `lang` at the top level, and the detail endpoint
+/// has to as well — a client should be able to read the same field from either
+/// without a special case. Flattened, so every existing field stays exactly
+/// where it was and adding this moves nothing a caller already reads.
+///
+/// It lives here rather than on `FarmResponse` because that type is also the
+/// element type of the list, where repeating the language on all hundred farms
+/// would say the same thing a hundred times.
+#[derive(serde::Serialize)]
+pub struct FarmDetailResponse {
+    #[serde(flatten)]
+    pub farm: FarmResponse,
+    pub lang: Language,
+}
+
 /// A page of farms plus the offset to fetch the next page (if any).
 #[derive(serde::Serialize)]
 pub struct FarmListResponse {
     pub farms: Vec<FarmResponse>,
     /// Offset for the next page as a string, or null when this is the last page.
     pub next_cursor: Option<String>,
+    /// The language the labels in this response were resolved to.
+    ///
+    /// Echoing it back means a caller can tell the difference between "you got
+    /// German because you asked" and "you got the default", without having to
+    /// infer it from the payload. It is also what makes an omitted `lang`
+    /// self-documenting.
+    pub lang: Language,
 }
 
 /// The raw farm row loaded from the database, before products are attached.

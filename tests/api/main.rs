@@ -5,6 +5,7 @@ mod authentication;
 mod directory;
 mod farms;
 mod health_check;
+mod language;
 mod me;
 mod moderation;
 mod products;
