@@ -265,8 +265,9 @@ content-type: text/plain; charset=utf-8
 Unsupported language 'es'. Supported languages are: en, de, fr, it, rm.
 ```
 
-Every response echoes back the language it resolved to, so a caller can tell
-"you got German because you asked" from "you got the default".
+Every response — list, detail and taxonomy alike — echoes back the language it
+resolved to as a top-level `lang`, so a caller can tell "you got German because
+you asked" from "you got the default" without inspecting the payload.
 
 #### Fallback
 
@@ -320,8 +321,20 @@ Products arrive ordered by category display order then slug, and each names its
 Labels live here rather than on `/farms` for two reasons: a farm response only
 carries the products *that farm* stocks, never the full list a picker needs; and
 repeating 180 product names across 3,155 farms is a lot of bytes for something a
-client looks up once. The payload is small and changes only on deploy, so cache
-it aggressively.
+client looks up once.
+
+The vocabulary is a snapshot taken at startup, so it cannot change until the app
+restarts. The endpoint says so:
+
+```
+Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+```
+
+An hour of caching risks nothing a restart would not already impose, and
+`stale-while-revalidate` lets a picker render instantly from a day-old copy
+while it refreshes behind the scenes. `public` is safe — the response varies
+only by `?lang=`, which is in the URL. A `400` for an unsupported language
+carries no cache header, so fixing the request takes effect immediately.
 
 > `products[]` on `/farms` still carries `name_de` and `name_en`. Those are a
 > compatibility shim for clients written before `/taxonomy` existed — prefer
