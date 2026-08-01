@@ -31,7 +31,13 @@ pub enum Language {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LanguageError {
-    #[error("Unsupported language '{0}'. Supported languages are: en, de, fr, it, rm.")]
+    // Generated from `ALL` rather than spelled out, so the message cannot drift
+    // from the set actually accepted. A hardcoded list would still compile, and
+    // still read plausibly, after a language was added.
+    #[error(
+        "Unsupported language '{0}'. Supported languages are: {codes}.",
+        codes = Language::ALL.map(|language| language.code()).join(", ")
+    )]
     Unsupported(String),
 }
 
@@ -152,7 +158,15 @@ mod tests {
         // so a caller can fix the request without reading the source.
         let message = error.to_string();
         assert!(message.contains("es"), "got: {message}");
-        assert!(message.contains("en, de, fr, it, rm"), "got: {message}");
+        // Checked against ALL rather than a frozen "en, de, fr, it, rm": a
+        // literal here would keep passing after a sixth language was added,
+        // while the message quietly told callers it was unsupported.
+        for language in Language::ALL {
+            assert!(
+                message.contains(language.code()),
+                "{language} is supported but missing from: {message}"
+            );
+        }
     }
 
     #[test]
