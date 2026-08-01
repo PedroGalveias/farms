@@ -1,5 +1,6 @@
 use crate::{
     domain::farm::{Address, Canton, Name, Point, StockStatus},
+    domain::language::Language,
     routes::farms::{FarmError, FarmListResponse, FarmResponse, FarmRow, ProductDto},
     taxonomy::TaxonomySnapshot,
 };
@@ -8,6 +9,13 @@ use anyhow::Context;
 use sqlx::PgPool;
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// Query parameters accepted by `GET /farms/{id}`.
+#[derive(Debug, serde::Deserialize)]
+pub struct FarmDetailQuery {
+    /// Display language for labels — see `FarmListQuery::lang`.
+    pub lang: Option<String>,
+}
 
 #[derive(Debug, serde::Deserialize)]
 pub struct FarmPath {
@@ -35,6 +43,9 @@ pub struct FarmListQuery {
     pub radius_km: Option<f64>,
     /// `newest` (default) | `name` | `canton` | `nearest` (needs lat/lng).
     pub sort: Option<String>,
+    /// Display language for labels: `en` (default) | `de` | `fr` | `it` | `rm`.
+    /// Filtering is unaffected — slugs stay language-independent.
+    pub lang: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: i64,
     #[serde(default)]
@@ -65,6 +76,10 @@ pub async fn get_all(
 ) -> Result<HttpResponse, FarmError> {
     let limit = query.limit.clamp(1, 100);
     let offset = query.offset.max(0);
+    // Resolve the display language up front so an unsupported code fails the
+    // request before any database work, the same way unknown slugs do.
+    let language = Language::from_query(query.lang.as_deref())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
     let sort = query.sort.as_deref().unwrap_or("newest");
 
     // Resolve product slugs to ids (early 400 on any unknown slug).
@@ -128,7 +143,11 @@ pub async fn get_all(
         None
     };
 
-    Ok(HttpResponse::Ok().json(FarmListResponse { farms, next_cursor }))
+    Ok(HttpResponse::Ok().json(FarmListResponse {
+        farms,
+        next_cursor,
+        lang: language,
+    }))
 }
 
 /// Resolve a comma-separated slug list to ids via `resolver`, 400 on unknown.
@@ -354,8 +373,14 @@ async fn load_products(
 #[tracing::instrument(name = "Get farm by id", skip(pool))]
 pub async fn get_by_id(
     path: web::Path<FarmPath>,
+    query: web::Query<FarmDetailQuery>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, FarmError> {
+    // Validate the language even though the detail response does not vary by it
+    // yet: rejecting `?lang=es` consistently on both endpoints means clients
+    // learn the contract from either one, and the labels land in #128/#129.
+    let _language = Language::from_query(query.lang.as_deref())
+        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
     let farm_id = Uuid::parse_str(&path.id)
         .map_err(|_| FarmError::ValidationError("Invalid farm id.".to_string()))?;
 

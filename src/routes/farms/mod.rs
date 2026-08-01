@@ -1,4 +1,5 @@
 use crate::domain::farm::{Address, Canton, Name, Point, StockStatus};
+use crate::domain::language::Language;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -51,6 +52,13 @@ pub struct FarmListResponse {
     pub farms: Vec<FarmResponse>,
     /// Offset for the next page as a string, or null when this is the last page.
     pub next_cursor: Option<String>,
+    /// The language the labels in this response were resolved to.
+    ///
+    /// Echoing it back means a caller can tell the difference between "you got
+    /// German because you asked" and "you got the default", without having to
+    /// infer it from the payload. It is also what makes an omitted `lang`
+    /// self-documenting.
+    pub lang: Language,
 }
 
 /// The raw farm row loaded from the database, before products are attached.
