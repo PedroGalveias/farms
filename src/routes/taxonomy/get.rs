@@ -1,5 +1,5 @@
 use crate::{domain::language::Language, routes::farms::FarmError, taxonomy::TaxonomySnapshot};
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, http::header, web};
 
 /// Query parameters for `GET /taxonomy`.
 #[derive(Debug, serde::Deserialize)]
@@ -31,6 +31,19 @@ pub struct TaxonomyResponse {
     pub categories: Vec<CategoryDto>,
 }
 
+/// How long a client may reuse this response.
+///
+/// The served vocabulary is a snapshot taken at startup, so it cannot change
+/// until the app is redeployed — an hour of caching risks nothing that a
+/// restart would not already have to wait for. `stale-while-revalidate` lets a
+/// picker render instantly from a day-old copy while the refresh happens in the
+/// background, which matters because this is on the critical path for anything
+/// with a type-ahead.
+///
+/// `public`: the response depends only on `?lang=`, which is in the URL, so a
+/// shared cache can serve it to everyone. No session, no `Vary` needed.
+const CACHE_CONTROL: &str = "public, max-age=3600, stale-while-revalidate=86400";
+
 /// `GET /taxonomy` — the whole filtering vocabulary in one request.
 ///
 /// This exists so a client does not have to carry its own copy of the taxonomy.
@@ -43,8 +56,9 @@ pub struct TaxonomyResponse {
 /// strings across three thousand farms would be a lot of bytes to say something
 /// a client can look up once and cache.
 ///
-/// The response is small (tens of rows) and changes only on deploy, so it is a
-/// good candidate for a long client-side cache.
+/// The response is small (tens of rows) and only changes when the taxonomy is
+/// reseeded and the app restarted, so it is served with a long cache lifetime —
+/// see `CACHE_CONTROL` above.
 #[tracing::instrument(name = "Get taxonomy", skip(taxonomy))]
 pub async fn get_taxonomy(
     query: web::Query<TaxonomyQuery>,
@@ -63,8 +77,10 @@ pub async fn get_taxonomy(
         })
         .collect();
 
-    Ok(HttpResponse::Ok().json(TaxonomyResponse {
-        lang: language,
-        categories,
-    }))
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CACHE_CONTROL, CACHE_CONTROL))
+        .json(TaxonomyResponse {
+            lang: language,
+            categories,
+        }))
 }

@@ -188,3 +188,51 @@ async fn the_database_rejects_a_blank_label() {
     .await
     .expect("an untranslated category must still be insertable");
 }
+
+#[tokio::test]
+async fn is_cacheable() {
+    // The vocabulary is a startup snapshot, so it cannot change until the app
+    // restarts. Clients on the critical path (pickers, type-aheads) should not
+    // re-fetch it on every navigation, and the doc comment claiming it is a
+    // "good candidate for caching" is worth nothing without the header.
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+
+    let response = app
+        .api_client
+        .get(format!("{}/taxonomy", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    let cache_control = response
+        .headers()
+        .get("cache-control")
+        .expect("Cache-Control must be set")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    assert!(cache_control.contains("public"), "got: {cache_control}");
+    assert!(cache_control.contains("max-age="), "got: {cache_control}");
+}
+
+#[tokio::test]
+async fn a_rejected_language_is_not_cached() {
+    // A 400 must not be cached as though it were the vocabulary — a client that
+    // fixed its `lang` should not keep being served the error.
+    let app = spawn_app(IdempotencyEngine::None).await;
+
+    let response = app
+        .api_client
+        .get(format!("{}/taxonomy?lang=es", app.address))
+        .send()
+        .await
+        .expect("Failed to execute request.");
+
+    assert_eq!(response.status().as_u16(), StatusCode::BAD_REQUEST.as_u16());
+    assert!(
+        response.headers().get("cache-control").is_none(),
+        "a 400 carried a Cache-Control header"
+    );
+}
