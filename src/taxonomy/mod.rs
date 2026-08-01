@@ -8,6 +8,10 @@
 //! this snapshot may be empty until seeding has run and the app has been
 //! (re)started.
 
+mod labels;
+
+pub use labels::LocalisedLabels;
+
 use sqlx::PgPool;
 use std::collections::HashMap;
 
