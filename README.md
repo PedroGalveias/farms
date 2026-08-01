@@ -196,6 +196,7 @@ The service currently exposes:
 - `GET /health_check`
 - `GET /farms` — the directory (filters, geo, pagination — see below)
 - `GET /farms/{id}`
+- `GET /taxonomy` — the filtering vocabulary with display labels (see below)
 - `POST /farms`
 - `POST /farms/{id}/product-suggestions` — suggest a product for a farm
 - `GET /admin/product-suggestions` — moderation queue (admin only)
@@ -224,9 +225,120 @@ Every farm carries its granular `products[]` (each with `slug`, `name_de`,
 | `radius_km` | Keep only farms within this many km of `lat`/`lng` |
 | `sort` | `newest` (default) · `name` · `canton` · `nearest` (needs `lat`/`lng`) |
 | `limit` / `offset` | Page size (clamped 1–100) and offset |
+| `lang` | Display language — see [Languages](#languages) |
 
-The response is `{ "farms": [...], "next_cursor": "<offset>" | null }`; a full
-page returns the next offset as `next_cursor`.
+The response is `{ "farms": [...], "next_cursor": "<offset>" | null, "lang": "<code>" }`;
+a full page returns the next offset as `next_cursor`.
+
+### Languages
+
+Five languages are supported: `en` (default), `de`, `fr`, `it`, `rm` —
+Switzerland's four national languages plus English.
+
+**Identity and display are separate.** Filtering always uses language-independent
+slugs; `lang` only decides which human-readable label comes back. So
+`?category=vegetables&lang=de` returns German text and matches exactly the same
+farms as `?category=vegetables&lang=fr`. A client can store a slug forever and
+switch language freely.
+
+```
+GET /farms?lang=de
+GET /farms/{id}?lang=fr
+GET /taxonomy?lang=rm
+```
+
+**Accepted values.** Bare codes (`de`) and regional tags (`de-CH`, `de_CH`) both
+work — browsers and mobile clients routinely send the regional form, and every
+Swiss variant maps onto the same labels. Matching is case-insensitive.
+
+An **omitted or empty** `lang` selects the default rather than erroring. An
+**unsupported** one is a `400`, matching how unknown category and product slugs
+are rejected: a caller who asked for something specific should hear that they
+did not get it.
+
+```http
+GET /taxonomy?lang=es
+
+HTTP/1.1 400 Bad Request
+content-type: text/plain; charset=utf-8
+
+Unsupported language 'es'. Supported languages are: en, de, fr, it, rm.
+```
+
+Every response — list, detail and taxonomy alike — echoes back the language it
+resolved to as a top-level `lang`, so a caller can tell "you got German because
+you asked" from "you got the default" without inspecting the payload.
+
+#### Fallback
+
+A translation that has not been authored yet falls back, in order:
+
+> **requested language → English → German**
+
+English sits in the middle because it is the wider second language for this
+audience: a French or Italian speaker without a translation is likelier to read
+"Pineapple" as intended than "Ananas", and Romansh speakers read German anyway.
+German is the last resort because it is the canonical label and is always
+present — so **`name` is never empty**, and a client never has to invent a
+placeholder or render a blank chip.
+
+Each entry also carries `translated`, which says whether `name` is a real
+translation or a fallback. That is what lets a client decide how much to trust
+the label, and lets us measure coverage without guessing.
+
+#### What is actually translated today
+
+| | de | en | fr | it | rm |
+| --- | --- | --- | --- | --- | --- |
+| Categories (13) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Products (183) | ✅ | ✅ | — | — | — |
+
+Product labels in fr/it/rm do not exist in the source dataset. Until they are
+authored ([#162](https://github.com/PedroGalveias/farms/issues/162)), asking for
+`?lang=rm` returns English product names with `"translated": false` — which is
+the honest answer, not a bug.
+
+### The Vocabulary — `GET /taxonomy`
+
+The whole filtering vocabulary in one request, so a client does not carry its own
+copy of the taxonomy and keep it in sync by hand.
+
+```jsonc
+{
+  "lang": "fr",
+  "categories": [
+    { "slug": "vegetables", "name": "Légumes", "translated": true }
+  ],
+  "products": [
+    { "slug": "apples", "name": "Apples", "translated": false, "category": "fruits" }
+  ]
+}
+```
+
+Products arrive ordered by category display order then slug, and each names its
+`category`, so a grouped picker can be rendered straight from this response.
+
+Labels live here rather than on `/farms` for two reasons: a farm response only
+carries the products *that farm* stocks, never the full list a picker needs; and
+repeating 180 product names across 3,155 farms is a lot of bytes for something a
+client looks up once.
+
+The vocabulary is a snapshot taken at startup, so it cannot change until the app
+restarts. The endpoint says so:
+
+```
+Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+```
+
+An hour of caching risks nothing a restart would not already impose, and
+`stale-while-revalidate` lets a picker render instantly from a day-old copy
+while it refreshes behind the scenes. `public` is safe — the response varies
+only by `?lang=`, which is in the URL. A `400` for an unsupported language
+carries no cache header, so fixing the request takes effect immediately.
+
+> `products[]` on `/farms` still carries `name_de` and `name_en`. Those are a
+> compatibility shim for clients written before `/taxonomy` existed — prefer
+> looking names up by slug from here.
 
 ### Product Suggestions & Moderation
 
