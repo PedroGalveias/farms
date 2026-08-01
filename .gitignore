@@ -5,3 +5,12 @@
 /coverage
 .DS_Store
 seed.sql
+
+# Ad-hoc binaries from local experiments. They land at the repo root rather
+# than under /target, so nothing else here excludes them and `git add -A`
+# happily commits half a megabyte of Mach-O apiece.
+/dead_chain*
+/dead_code_check*
+
+# Local editor/assistant tooling config.
+.ai/
