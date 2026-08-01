@@ -13,10 +13,16 @@ pub use post::create;
 
 /// A product as returned to API clients.
 ///
-/// i18n ownership: the `slug` is the stable identity and the frontend owns
-/// display localization keyed by it. The backend ships the two canonical names
-/// it holds — `name_de` (always present) and `name_en` (when known) — as the
-/// fallback; the frontend layers fr/it/rm on top, keyed by slug.
+/// i18n ownership: the `slug` is the stable identity, and display labels for
+/// every supported language come from `GET /taxonomy`, which a client fetches
+/// once and caches by slug. That is the single source — a client no longer
+/// maintains its own copy of the vocabulary.
+///
+/// `name_de` and `name_en` remain here as a compatibility shim for clients
+/// written before `/taxonomy` existed. They are the only two labels this
+/// endpoint has ever carried, so they can be dropped once the frontend reads
+/// names from the taxonomy; repeating a label per farm was always going to be
+/// the wrong place for it.
 #[derive(serde::Serialize, Clone)]
 pub struct ProductDto {
     pub slug: String,

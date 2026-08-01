@@ -23,12 +23,28 @@ pub struct CategoryDto {
     pub translated: bool,
 }
 
+/// A product as returned by the taxonomy endpoint.
+#[derive(serde::Serialize)]
+pub struct ProductDto {
+    /// Stable, language-independent identifier — what `?products=` takes.
+    pub slug: String,
+    /// Display label in the requested language, falling back where a
+    /// translation is missing.
+    pub name: String,
+    /// Whether `name` is a real translation or a fallback.
+    pub translated: bool,
+    /// Slug of the category group this product belongs to, so a client can
+    /// build a grouped picker without a second lookup.
+    pub category: String,
+}
+
 /// The vocabulary the API filters on, with display labels.
 #[derive(serde::Serialize)]
 pub struct TaxonomyResponse {
     /// The language the labels were resolved to.
     pub lang: Language,
     pub categories: Vec<CategoryDto>,
+    pub products: Vec<ProductDto>,
 }
 
 /// How long a client may reuse this response.
@@ -52,9 +68,9 @@ const CACHE_CONTROL: &str = "public, max-age=3600, stale-while-revalidate=86400"
 /// response — so putting labels on `/farms` alone would leave every client
 /// maintaining a duplicate list and keeping it in sync by hand.
 ///
-/// Labels are deliberately absent from `/farms`: repeating thirteen category
-/// strings across three thousand farms would be a lot of bytes to say something
-/// a client can look up once and cache.
+/// Labels belong here rather than on `/farms`: repeating thirteen category and
+/// a hundred and eighty product strings across three thousand farms would be a
+/// lot of bytes to say something a client can look up once and cache by slug.
 ///
 /// The response is small (tens of rows) and only changes when the taxonomy is
 /// reseeded and the app restarted, so it is served with a long cache lifetime —
@@ -77,10 +93,22 @@ pub async fn get_taxonomy(
         })
         .collect();
 
+    let products = taxonomy
+        .products()
+        .iter()
+        .map(|product| ProductDto {
+            slug: product.slug.clone(),
+            name: product.labels.resolve(language).to_string(),
+            translated: product.labels.has(language),
+            category: product.group_slug.clone(),
+        })
+        .collect();
+
     Ok(HttpResponse::Ok()
         .insert_header((header::CACHE_CONTROL, CACHE_CONTROL))
         .json(TaxonomyResponse {
             lang: language,
             categories,
+            products,
         }))
 }

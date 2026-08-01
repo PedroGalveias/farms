@@ -236,3 +236,166 @@ async fn a_rejected_language_is_not_cached() {
         "a 400 carried a Cache-Control header"
     );
 }
+
+#[tokio::test]
+async fn lists_every_product_with_its_category() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+
+    let body = taxonomy(&app, "").await;
+    let products = body["products"].as_array().expect("products array");
+
+    // A picker needs the whole vocabulary, not just what happens to be attached
+    // to the farms on the current page.
+    assert_eq!(products.len(), 4, "got: {products:?}");
+
+    let strawberries = products
+        .iter()
+        .find(|p| p["slug"] == "strawberries")
+        .expect("strawberries");
+    assert_eq!(strawberries["name"], "Strawberries");
+    assert_eq!(
+        strawberries["category"], "fruits",
+        "a product must name its group so a client can build a grouped picker \
+         without a second lookup"
+    );
+}
+
+#[tokio::test]
+async fn products_are_grouped_by_category_in_display_order() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+
+    let body = taxonomy(&app, "").await;
+    let categories: Vec<&str> = body["products"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["category"].as_str().unwrap())
+        .collect();
+
+    // fruits has display_order 0, vegetables 1. A client should be able to
+    // render the list top to bottom without sorting it first.
+    assert_eq!(categories, ["fruits", "fruits", "fruits", "vegetables"]);
+}
+
+#[tokio::test]
+async fn a_product_is_localised_when_a_translation_exists() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+
+    for (code, label) in [
+        ("de", "Erdbeeren"),
+        ("en", "Strawberries"),
+        ("fr", "Fraises"),
+        ("it", "Fragole"),
+        ("rm", "Fraivas"),
+    ] {
+        let body = taxonomy(&app, &format!("?lang={code}")).await;
+        let strawberries = body["products"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["slug"] == "strawberries")
+            .expect("strawberries")
+            .clone();
+
+        assert_eq!(strawberries["name"], label, "lang={code}");
+        assert_eq!(strawberries["translated"], true, "lang={code}");
+    }
+}
+
+#[tokio::test]
+async fn an_untranslated_product_falls_back_to_english_and_says_so() {
+    // The behaviour issue #130 specifies, checked through the endpoint rather
+    // than against the resolver in isolation.
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+
+    for code in ["fr", "it", "rm"] {
+        let body = taxonomy(&app, &format!("?lang={code}")).await;
+        let cherries = body["products"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["slug"] == "cherries")
+            .expect("cherries")
+            .clone();
+
+        assert_eq!(
+            cherries["name"], "Cherries",
+            "lang={code} should fall back to English"
+        );
+        assert_eq!(
+            cherries["translated"], false,
+            "lang={code} is a fallback, and the response must not claim otherwise"
+        );
+        // The stable key survives the fallback — that is the whole point of
+        // separating identity from display.
+        assert_eq!(cherries["slug"], "cherries", "lang={code}");
+    }
+}
+
+#[tokio::test]
+async fn german_is_the_last_resort_for_a_product() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    seed_test_taxonomy(&app.db_pool).await;
+
+    // `damsons` boots with a German label and nothing else.
+    for code in ["en", "fr", "it", "rm"] {
+        let body = taxonomy(&app, &format!("?lang={code}")).await;
+        let damsons = body["products"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["slug"] == "damsons")
+            .expect("damsons")
+            .clone();
+
+        assert_eq!(
+            damsons["name"], "Zwetschgen",
+            "lang={code} should reach the German label rather than return nothing"
+        );
+        assert_eq!(
+            damsons["translated"], false,
+            "lang={code} is served the canonical label, not a translation"
+        );
+    }
+
+    // And German itself is not a fallback.
+    let body = taxonomy(&app, "?lang=de").await;
+    let damsons = body["products"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["slug"] == "damsons")
+        .expect("damsons")
+        .clone();
+    assert_eq!(damsons["name"], "Zwetschgen");
+    assert_eq!(damsons["translated"], true);
+}
+
+#[tokio::test]
+async fn the_database_rejects_a_blank_product_label() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    let taxonomy = seed_test_taxonomy(&app.db_pool).await;
+    let fruits = taxonomy.fruits_category_id;
+
+    let error = sqlx::query(
+        "INSERT INTO products (category_id, key_de, slug, name_en)
+         VALUES ($1, 'Leer', 'blank-probe', '   ')",
+    )
+    .bind(fruits)
+    .execute(&app.db_pool)
+    .await
+    .expect_err("a whitespace-only product label must be rejected");
+
+    assert_eq!(
+        error
+            .as_database_error()
+            .and_then(|db| db.constraint())
+            .unwrap_or_default(),
+        "products_labels_not_blank",
+        "got: {error}"
+    );
+}

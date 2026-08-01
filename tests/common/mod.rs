@@ -503,9 +503,56 @@ async fn seed_standard_taxonomy(pool: &PgPool) {
         "Verduras",
     )
     .await;
-    insert_test_product(pool, fruits, "Erdbeeren", "strawberries", "Strawberries").await;
-    insert_test_product(pool, fruits, "Kirschen", "cherries", "Cherries").await;
-    insert_test_product(pool, vegetables, "Broccoli", "broccoli", "Broccoli").await;
+    // Fully translated.
+    insert_test_product(
+        pool,
+        fruits,
+        "Erdbeeren",
+        "strawberries",
+        Some("Strawberries"),
+        Some("Fraises"),
+        Some("Fragole"),
+        Some("Fraivas"),
+    )
+    .await;
+    // German and English only — the state the real catalogue is in until #162
+    // is done. Tests that assert fallback behaviour depend on this row.
+    insert_test_product(
+        pool,
+        fruits,
+        "Kirschen",
+        "cherries",
+        Some("Cherries"),
+        None,
+        None,
+        None,
+    )
+    .await;
+    // German only. The snapshot is built once at startup, so the last resort in
+    // the fallback chain can only be reached by a row that boots this way — an
+    // UPDATE after spawn_app never reaches the served taxonomy.
+    insert_test_product(
+        pool,
+        fruits,
+        "Zwetschgen",
+        "damsons",
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
+    insert_test_product(
+        pool,
+        vegetables,
+        "Broccoli",
+        "broccoli",
+        Some("Broccoli"),
+        Some("Brocoli"),
+        Some("Broccoli"),
+        Some("Broccoli"),
+    )
+    .await;
 }
 
 /// The ids of the standard taxonomy `spawn_app` already seeded. (Named `seed_*`
@@ -569,24 +616,34 @@ async fn insert_test_category(
     .id
 }
 
-#[allow(dead_code)]
+/// Insert a product. `fr`/`it`/`rm` are optional so a fixture can express a
+/// partially translated product — the state most of the real catalogue is in,
+/// and the only way to exercise the fallback chain end to end.
+#[allow(dead_code, clippy::too_many_arguments)]
 async fn insert_test_product(
     pool: &PgPool,
     category_id: i16,
     key_de: &str,
     slug: &str,
-    name_en: &str,
+    name_en: Option<&str>,
+    name_fr: Option<&str>,
+    name_it: Option<&str>,
+    name_rm: Option<&str>,
 ) -> i32 {
     sqlx::query!(
         r#"
-        INSERT INTO products (category_id, key_de, slug, name_en)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO products
+            (category_id, key_de, slug, name_en, name_fr, name_it, name_rm)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         "#,
         category_id,
         key_de,
         slug,
         name_en,
+        name_fr,
+        name_it,
+        name_rm,
     )
     .fetch_one(pool)
     .await

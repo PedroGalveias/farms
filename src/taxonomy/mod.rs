@@ -20,7 +20,7 @@ use std::collections::HashMap;
 pub struct ProductInfo {
     pub id: i32,
     pub slug: String,
-    pub name_en: Option<String>,
+    pub labels: LocalisedLabels,
     pub group_slug: String,
 }
 
@@ -36,6 +36,10 @@ pub struct TaxonomySnapshot {
     /// because it is thirteen rows that change only on deploy, and serving
     /// /taxonomy from a snapshot avoids a query per request.
     categories: Vec<CategoryInfo>,
+    /// Every product, ordered for display: by category first, then by slug.
+    /// The maps above answer lookups; this answers "what is the whole
+    /// vocabulary", which is what a picker or a type-ahead needs.
+    products: Vec<ProductInfo>,
 }
 
 /// A category group and the labels it can be displayed with.
@@ -54,10 +58,15 @@ impl TaxonomySnapshot {
             SELECT
                 p.id,
                 p.slug,
+                p.key_de,
                 p.name_en,
+                p.name_fr,
+                p.name_it,
+                p.name_rm,
                 c.slug AS "group_slug!"
             FROM products p
             JOIN product_categories c ON c.id = p.category_id
+            ORDER BY c.display_order, c.slug, p.slug
             "#
         )
         .fetch_all(pool)
@@ -65,15 +74,23 @@ impl TaxonomySnapshot {
 
         let mut by_slug = HashMap::with_capacity(rows.len());
         let mut by_id = HashMap::with_capacity(rows.len());
+        let mut products = Vec::with_capacity(rows.len());
         for row in rows {
             let info = ProductInfo {
                 id: row.id,
                 slug: row.slug.clone(),
-                name_en: row.name_en,
+                labels: LocalisedLabels {
+                    de: row.key_de,
+                    en: row.name_en,
+                    fr: row.name_fr,
+                    it: row.name_it,
+                    rm: row.name_rm,
+                },
                 group_slug: row.group_slug,
             };
             by_slug.insert(row.slug, info.clone());
-            by_id.insert(row.id, info);
+            by_id.insert(row.id, info.clone());
+            products.push(info);
         }
 
         let category_rows = sqlx::query!(
@@ -106,12 +123,18 @@ impl TaxonomySnapshot {
             by_id,
             category_by_slug,
             categories,
+            products,
         })
     }
 
     /// Every category group, in display order.
     pub fn categories(&self) -> &[CategoryInfo] {
         &self.categories
+    }
+
+    /// Every product, grouped by category and ordered within it.
+    pub fn products(&self) -> &[ProductInfo] {
+        &self.products
     }
 
     /// Resolve a slug to a product id, or `None` if the slug is unknown.
