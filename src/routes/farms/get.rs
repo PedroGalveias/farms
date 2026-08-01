@@ -1,7 +1,9 @@
 use crate::{
     domain::farm::{Address, Canton, Name, Point, StockStatus},
     domain::language::Language,
-    routes::farms::{FarmError, FarmListResponse, FarmResponse, FarmRow, ProductDto},
+    routes::farms::{
+        FarmDetailResponse, FarmError, FarmListResponse, FarmResponse, FarmRow, ProductDto,
+    },
     taxonomy::TaxonomySnapshot,
 };
 use actix_web::{HttpResponse, web};
@@ -376,16 +378,16 @@ pub async fn get_by_id(
     query: web::Query<FarmDetailQuery>,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, FarmError> {
-    // Validate the language even though the detail response does not vary by it
-    // yet: rejecting `?lang=es` consistently on both endpoints means clients
-    // learn the contract from either one, and the labels land in #128/#129.
-    let _language = Language::from_query(query.lang.as_deref())
+    let language = Language::from_query(query.lang.as_deref())
         .map_err(|e| FarmError::ValidationError(e.to_string()))?;
     let farm_id = Uuid::parse_str(&path.id)
         .map_err(|_| FarmError::ValidationError("Invalid farm id.".to_string()))?;
 
     match get_farm_by_id(farm_id, &pool).await? {
-        Some(farm) => Ok(HttpResponse::Ok().json(farm)),
+        Some(farm) => Ok(HttpResponse::Ok().json(FarmDetailResponse {
+            farm,
+            lang: language,
+        })),
         None => Err(FarmError::NotFound),
     }
 }

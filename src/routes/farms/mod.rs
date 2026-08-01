@@ -46,6 +46,23 @@ pub struct FarmResponse {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+/// A single farm plus the language it was resolved for.
+///
+/// The list endpoint echoes `lang` at the top level, and the detail endpoint
+/// has to as well — a client should be able to read the same field from either
+/// without a special case. Flattened, so every existing field stays exactly
+/// where it was and adding this moves nothing a caller already reads.
+///
+/// It lives here rather than on `FarmResponse` because that type is also the
+/// element type of the list, where repeating the language on all hundred farms
+/// would say the same thing a hundred times.
+#[derive(serde::Serialize)]
+pub struct FarmDetailResponse {
+    #[serde(flatten)]
+    pub farm: FarmResponse,
+    pub lang: Language,
+}
+
 /// A page of farms plus the offset to fetch the next page (if any).
 #[derive(serde::Serialize)]
 pub struct FarmListResponse {

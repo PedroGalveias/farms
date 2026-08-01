@@ -170,3 +170,35 @@ async fn language_does_not_change_which_farms_match() {
         "result count varied by language: {counts:?}"
     );
 }
+
+#[tokio::test]
+async fn the_detail_endpoint_echoes_the_language_too() {
+    // The list endpoint reports which language it resolved to; the detail one
+    // must as well, or a client has to special-case which response it is
+    // reading to answer the same question.
+    let app = spawn_app(IdempotencyEngine::None).await;
+    let farm_id = insert_test_farm(&app.db_pool, "Echo Farm").await;
+
+    for (query, expected) in [
+        ("", "en"),
+        ("?lang=de", "de"),
+        ("?lang=fr-CH", "fr"),
+        ("?lang=", "en"),
+    ] {
+        let body: serde_json::Value = app
+            .api_client
+            .get(format!("{}/farms/{farm_id}{query}", app.address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+            .json()
+            .await
+            .unwrap();
+
+        assert_eq!(body["lang"], expected, "query={query:?}");
+        // Flattened, so the farm's own fields stay exactly where they were.
+        assert_eq!(body["id"], farm_id.to_string(), "query={query:?}");
+        assert_eq!(body["name"], "Echo Farm", "query={query:?}");
+        assert!(body["products"].is_array(), "query={query:?}");
+    }
+}
