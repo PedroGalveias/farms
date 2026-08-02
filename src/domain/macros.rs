@@ -90,3 +90,82 @@ macro_rules! impl_sqlx_for_vec_string_domain_type {
         }
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use sqlx::{Encode, Type, encode::IsNull, postgres::PgArgumentBuffer};
+
+    // `Decode`'s `PgValueRef` can only be constructed from real wire bytes
+    // produced by a live connection, so the round trip through Postgres is
+    // exercised by the domain types' own DB-backed integration tests
+    // (e.g. `tests/api/farms.rs` inserting/reading back `Address`, `Canton`,
+    // `Categories`). What's unit-testable here, without a database, is that
+    // `type_info` and `Encode` for the generated wrapper agree with the
+    // wrapped type's - which is the whole point of these macros.
+
+    #[derive(Debug, Clone)]
+    struct StringWrapper(String);
+    impl_sqlx_for_string_domain_type!(StringWrapper);
+
+    #[derive(Debug, Clone)]
+    struct VecStringWrapper(Vec<String>);
+    impl_sqlx_for_vec_string_domain_type!(VecStringWrapper);
+
+    #[test]
+    fn string_wrapper_type_info_matches_string() {
+        assert_eq!(
+            <StringWrapper as Type<sqlx::Postgres>>::type_info(),
+            <String as Type<sqlx::Postgres>>::type_info()
+        );
+    }
+
+    #[test]
+    fn string_wrapper_encodes_identically_to_the_wrapped_string() {
+        let value = "hello world".to_string();
+        let wrapper = StringWrapper(value.clone());
+
+        let mut wrapper_buf = PgArgumentBuffer::default();
+        let wrapper_result = wrapper.encode_by_ref(&mut wrapper_buf).unwrap();
+
+        let mut string_buf = PgArgumentBuffer::default();
+        let string_result = value.encode_by_ref(&mut string_buf).unwrap();
+
+        assert!(matches!(wrapper_result, IsNull::No));
+        assert!(matches!(string_result, IsNull::No));
+        assert_eq!(&*wrapper_buf, &*string_buf);
+    }
+
+    #[test]
+    fn vec_string_wrapper_type_info_matches_vec_string() {
+        assert_eq!(
+            <VecStringWrapper as Type<sqlx::Postgres>>::type_info(),
+            <Vec<String> as Type<sqlx::Postgres>>::type_info()
+        );
+    }
+
+    #[test]
+    fn vec_string_wrapper_encodes_identically_to_the_wrapped_vec() {
+        let value = vec!["Dairy".to_string(), "Egg".to_string()];
+        let wrapper = VecStringWrapper(value.clone());
+
+        let mut wrapper_buf = PgArgumentBuffer::default();
+        let wrapper_result = wrapper.encode_by_ref(&mut wrapper_buf).unwrap();
+
+        let mut vec_buf = PgArgumentBuffer::default();
+        let vec_result = value.encode_by_ref(&mut vec_buf).unwrap();
+
+        assert!(matches!(wrapper_result, IsNull::No));
+        assert!(matches!(vec_result, IsNull::No));
+        assert_eq!(&*wrapper_buf, &*vec_buf);
+    }
+
+    #[test]
+    fn vec_string_wrapper_encodes_an_empty_vec() {
+        let wrapper = VecStringWrapper(Vec::new());
+        let mut buf = PgArgumentBuffer::default();
+
+        let result = wrapper.encode_by_ref(&mut buf).unwrap();
+
+        assert!(matches!(result, IsNull::No));
+    }
+}

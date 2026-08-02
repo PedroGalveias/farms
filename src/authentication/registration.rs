@@ -1,13 +1,14 @@
-use crate::authentication::password::compute_password_hash;
-use crate::configuration::RegistrationSettings;
-use crate::domain::user::{Email, Role, UserPassword, UserStatus, Username};
-use crate::email_client::EmailClient;
-use crate::errors::error_chain_fmt;
-use crate::telemetry::spawn_blocking_with_tracing;
+use crate::{
+    authentication::password::compute_password_hash,
+    configuration::RegistrationSettings,
+    domain::user::{Email, Role, UserPassword, UserStatus, Username},
+    email_client::EmailClient,
+    errors::error_chain_fmt,
+    telemetry::spawn_blocking_with_tracing,
+};
 use anyhow::Context;
 use chrono::Utc;
-use rand::RngExt;
-use rand::distr::Alphanumeric;
+use rand::{RngExt, distr::Alphanumeric};
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
 use sqlx::{Executor, PgPool, Postgres, Transaction};
@@ -212,4 +213,43 @@ async fn send_verification_email(
         )
         .await
         .map_err(|e| e.context("Failed to send the verification email."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unexpected_error_debug_prints_the_source_chain() {
+        let source =
+            anyhow::anyhow!("connection refused").context("Failed to insert pending user.");
+        let err = RegisterUserError::UnexpectedError(source);
+
+        let output = format!("{err:?}");
+
+        assert!(output.starts_with("Failed to insert pending user.\n"));
+        assert!(output.contains("Caused by:\n\tconnection refused"));
+    }
+
+    #[test]
+    fn username_taken_debug_prints_just_the_message() {
+        let err = RegisterUserError::UsernameTaken;
+
+        let output = format!("{err:?}");
+
+        assert_eq!(output, "Username is already taken.\n\n");
+    }
+
+    #[test]
+    fn email_delivery_error_debug_prints_the_source_chain() {
+        let source =
+            anyhow::anyhow!("smtp timeout").context("Failed to send the verification email.");
+        let err = RegisterUserError::EmailDeliveryError(source);
+
+        let output = format!("{err:?}");
+
+        assert!(output.starts_with("Failed to deliver the verification email.\n"));
+        assert!(output.contains("Caused by:\n\tFailed to send the verification email."));
+        assert!(output.contains("Caused by:\n\tsmtp timeout"));
+    }
 }

@@ -80,7 +80,7 @@ pub struct LoggingSettings {
     pub format: LogFormat,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TelemetryProtocol {
     Grpc,
@@ -211,6 +211,7 @@ fn default_idempotency_settings_redis_key_prefix() -> String {
 }
 
 /// The runtime environment for our application.
+#[derive(Debug, PartialEq, Eq)]
 pub enum Environment {
     Local,
     Production,
@@ -239,7 +240,7 @@ impl TryFrom<String> for Environment {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IdempotencyEngine {
     None,
     Redis,
@@ -301,7 +302,7 @@ impl DatabaseSettings {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LoggingLevel {
     Trace,
     Debug,
@@ -348,7 +349,7 @@ impl<'de> serde::Deserialize<'de> for LoggingLevel {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LogFormat {
     Pretty,
     Bunyan,
@@ -417,4 +418,237 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     // Try to convert the configuration values it read into
     // our Settings type
     settings.try_deserialize::<Settings>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Default functions test - Silly test
+    #[test]
+    fn default_configurations() {
+        assert_eq!(default_telemetry_protocol(), TelemetryProtocol::Grpc);
+        assert_eq!(default_email_client_engine(), EmailClientEngine::Mailjet);
+        assert_eq!(default_verification_token_ttl_seconds(), 86_400);
+        assert_eq!(default_idempotency_settings_ttl_seconds(), 600);
+        assert_eq!(
+            default_idempotency_settings_cleanup_worker_run_interval(),
+            60
+        );
+        assert_eq!(
+            default_idempotency_settings_redis_key_prefix(),
+            "idem".to_string()
+        );
+    }
+
+    #[test]
+    fn email_client_engine_as_str() {
+        assert_eq!(EmailClientEngine::Mailjet.as_str(), "mailjet");
+        assert_eq!(EmailClientEngine::Log.as_str(), "log");
+    }
+
+    #[test]
+    fn email_client_engine_try_from_string_accepts_known_values_case_insensitively() {
+        assert_eq!(
+            EmailClientEngine::try_from("mailjet".to_string()),
+            Ok(EmailClientEngine::Mailjet)
+        );
+        assert_eq!(
+            EmailClientEngine::try_from("MailJet".to_string()),
+            Ok(EmailClientEngine::Mailjet)
+        );
+        assert_eq!(
+            EmailClientEngine::try_from("log".to_string()),
+            Ok(EmailClientEngine::Log)
+        );
+        assert_eq!(
+            EmailClientEngine::try_from("LOG".to_string()),
+            Ok(EmailClientEngine::Log)
+        );
+    }
+
+    #[test]
+    fn email_client_engine_try_from_string_rejects_unknown_values() {
+        let result = EmailClientEngine::try_from("smtp".to_string());
+
+        assert_eq!(
+            result,
+            Err("'smtp' is not a supported email client engine.\
+                Use 'mailjet' for real delivery or 'log' for local development."
+                .to_string())
+        );
+    }
+
+    #[test]
+    fn environment_as_str() {
+        assert_eq!(Environment::Local.as_str(), "local");
+        assert_eq!(Environment::Production.as_str(), "production");
+    }
+
+    #[test]
+    fn environment_try_from_string_accepts_known_values_case_insensitively() {
+        assert_eq!(
+            Environment::try_from("local".to_string()),
+            Ok(Environment::Local)
+        );
+        assert_eq!(
+            Environment::try_from("LOCAL".to_string()),
+            Ok(Environment::Local)
+        );
+        assert_eq!(
+            Environment::try_from("production".to_string()),
+            Ok(Environment::Production)
+        );
+        assert_eq!(
+            Environment::try_from("PRODUCTION".to_string()),
+            Ok(Environment::Production)
+        );
+    }
+
+    #[test]
+    fn environment_try_from_string_rejects_unknown_values() {
+        let result = Environment::try_from("staging".to_string());
+
+        assert_eq!(
+            result,
+            Err("staging is not supported environment.\
+                Use either `local` or `production`."
+                .to_string())
+        );
+    }
+
+    #[test]
+    fn idempotency_engine_as_str() {
+        assert_eq!(IdempotencyEngine::None.as_str(), "none");
+        assert_eq!(IdempotencyEngine::Redis.as_str(), "redis");
+        assert_eq!(IdempotencyEngine::Postgres.as_str(), "postgres");
+    }
+
+    #[test]
+    fn idempotency_engine_try_from_string_accepts_known_values_case_insensitively() {
+        assert_eq!(
+            IdempotencyEngine::try_from("none".to_string()),
+            Ok(IdempotencyEngine::None)
+        );
+        assert_eq!(
+            IdempotencyEngine::try_from("NONE".to_string()),
+            Ok(IdempotencyEngine::None)
+        );
+        assert_eq!(
+            IdempotencyEngine::try_from("redis".to_string()),
+            Ok(IdempotencyEngine::Redis)
+        );
+        assert_eq!(
+            IdempotencyEngine::try_from("REDIS".to_string()),
+            Ok(IdempotencyEngine::Redis)
+        );
+        assert_eq!(
+            IdempotencyEngine::try_from("postgres".to_string()),
+            Ok(IdempotencyEngine::Postgres)
+        );
+        assert_eq!(
+            IdempotencyEngine::try_from("POSTGRES".to_string()),
+            Ok(IdempotencyEngine::Postgres)
+        );
+    }
+
+    #[test]
+    fn idempotency_engine_try_from_string_rejects_unknown_values() {
+        let result = IdempotencyEngine::try_from("memcached".to_string());
+
+        assert_eq!(
+            result,
+            Err("'memcached' is not a supported Idempotency engine.\
+                Use 'redis', 'postgres' or 'none' to disable Idempotency\
+                Warning: postgres engine is currently untested"
+                .to_string())
+        );
+    }
+
+    #[test]
+    fn logging_level_as_str() {
+        assert_eq!(LoggingLevel::Trace.as_str(), "trace");
+        assert_eq!(LoggingLevel::Debug.as_str(), "debug");
+        assert_eq!(LoggingLevel::Info.as_str(), "info");
+        assert_eq!(LoggingLevel::Warn.as_str(), "warn");
+        assert_eq!(LoggingLevel::Error.as_str(), "error");
+    }
+
+    #[test]
+    fn logging_level_try_from_string_accepts_known_values_case_insensitively() {
+        assert_eq!(
+            LoggingLevel::try_from("trace".to_string()),
+            Ok(LoggingLevel::Trace)
+        );
+        assert_eq!(
+            LoggingLevel::try_from("TRACE".to_string()),
+            Ok(LoggingLevel::Trace)
+        );
+        assert_eq!(
+            LoggingLevel::try_from("debug".to_string()),
+            Ok(LoggingLevel::Debug)
+        );
+        assert_eq!(
+            LoggingLevel::try_from("info".to_string()),
+            Ok(LoggingLevel::Info)
+        );
+        assert_eq!(
+            LoggingLevel::try_from("warn".to_string()),
+            Ok(LoggingLevel::Warn)
+        );
+        assert_eq!(
+            LoggingLevel::try_from("error".to_string()),
+            Ok(LoggingLevel::Error)
+        );
+    }
+
+    #[test]
+    fn logging_level_try_from_string_rejects_unknown_values() {
+        let result = LoggingLevel::try_from("verbose".to_string());
+
+        assert_eq!(
+            result,
+            Err("'verbose' is not a supported Logging level.\
+                Use 'trace', 'debug', 'info', 'warn', 'error'"
+                .to_string())
+        );
+    }
+
+    #[test]
+    fn log_format_as_str() {
+        assert_eq!(LogFormat::Pretty.as_str(), "pretty");
+        assert_eq!(LogFormat::Bunyan.as_str(), "bunyan");
+    }
+
+    #[test]
+    fn log_format_try_from_string_accepts_known_values_case_insensitively() {
+        assert_eq!(
+            LogFormat::try_from("pretty".to_string()),
+            Ok(LogFormat::Pretty)
+        );
+        assert_eq!(
+            LogFormat::try_from("PRETTY".to_string()),
+            Ok(LogFormat::Pretty)
+        );
+        assert_eq!(
+            LogFormat::try_from("bunyan".to_string()),
+            Ok(LogFormat::Bunyan)
+        );
+        assert_eq!(
+            LogFormat::try_from("BUNYAN".to_string()),
+            Ok(LogFormat::Bunyan)
+        );
+    }
+
+    #[test]
+    fn log_format_try_from_string_rejects_unknown_values() {
+        let result = LogFormat::try_from("json".to_string());
+
+        assert_eq!(
+            result,
+            Err("'json' is not a supported Log format.\
+                Use 'pretty' or 'bunyan'"
+                .to_string())
+        );
+    }
 }

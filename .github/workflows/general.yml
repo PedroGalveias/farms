@@ -128,12 +128,12 @@ jobs:
           output: both
           hide_complexity: true
       - name: Add Coverage PR Comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         if: github.event_name == 'pull_request'
         with:
           recreate: true
           path: code-coverage-results.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: "Coverage report"
           path: coverage/

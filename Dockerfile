@@ -17,7 +17,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 ENV SQLX_OFFLINE=true
 # Build our project
-RUN cargo build --release --bin farms --features opentelemetry
+RUN cargo build --release --bin farms
 
 FROM alpine:3.22 AS runtime
 WORKDIR /app

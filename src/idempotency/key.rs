@@ -79,4 +79,24 @@ mod tests {
         let key = format!("{}:{}:{}", "idem", Uuid::new_v4(), Uuid::new_v4());
         assert_ok!(IdempotencyKey::try_from(key));
     }
+
+    #[test]
+    fn from_idempotency_key_for_string_returns_the_underlying_value() {
+        let raw = Uuid::new_v4().to_string();
+        let key = IdempotencyKey::try_from(raw.clone()).unwrap();
+
+        let back: String = key.into();
+
+        assert_eq!(back, raw);
+    }
+
+    #[test]
+    fn from_idempotency_key_for_string_preserves_the_trimmed_value() {
+        let raw = format!("  {}  ", Uuid::new_v4());
+        let key = IdempotencyKey::try_from(raw.clone()).unwrap();
+
+        let back: String = key.into();
+
+        assert_eq!(back, raw.trim());
+    }
 }

@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin};
+use std::{fmt::Formatter, future::Future, pin::Pin};
 
 use actix_session::SessionExt;
 use actix_web::{
@@ -6,7 +6,6 @@ use actix_web::{
 };
 use anyhow::Context;
 use sqlx::PgPool;
-use std::fmt::Formatter;
 
 use crate::{
     authentication::{AuthenticatedUser, TypedSession, get_user_by_id},
@@ -84,5 +83,35 @@ impl FromRequest for CurrentUser {
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::test::TestRequest;
+
+    #[test]
+    fn status_code_is_internal_server_error_for_unexpected_error() {
+        let err = AuthenticationError::UnexpectedError(anyhow::anyhow!("boom"));
+
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Reaches the `pool.ok_or_else` branch: no `web::Data<PgPool>` was
+    // registered as app data, which happens if the extractor is wired up on a
+    // scope that forgot to attach the database pool.
+    #[tokio::test]
+    async fn from_request_fails_with_internal_server_error_when_the_pool_is_missing() {
+        let req = TestRequest::default().to_http_request();
+        let mut payload = Payload::None;
+
+        let result = CurrentUser::from_request(&req, &mut payload).await;
+
+        let err = result.expect_err("missing pool should fail extraction");
+        assert_eq!(
+            err.as_response_error().status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }

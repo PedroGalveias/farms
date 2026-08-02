@@ -463,4 +463,99 @@ mod tests {
         let cat2 = Categories::parse(vec!["B".to_string(), "A".to_string()]).unwrap();
         assert_eq!(cat1, cat2);
     }
+
+    #[test]
+    fn as_vec_returns_correct_data() {
+        let categories = Categories::parse(vec!["Dairy".to_string(), "Egg".to_string()]).unwrap();
+
+        let vec = categories.as_vec();
+        assert_eq!(vec.len(), 2);
+        assert_eq!(vec[0], "Dairy");
+        assert_eq!(vec[1], "Egg");
+    }
+
+    #[test]
+    fn as_ref_returns_the_underlying_vec() {
+        let categories = Categories::parse(vec!["Dairy".to_string(), "Egg".to_string()]).unwrap();
+
+        assert_eq!(
+            AsRef::<Vec<String>>::as_ref(&categories),
+            categories.as_vec()
+        );
+    }
+
+    #[test]
+    fn serializes_as_a_json_array() {
+        let categories = Categories::parse(vec!["Dairy".to_string(), "Egg".to_string()]).unwrap();
+
+        let json = serde_json::to_string(&categories).unwrap();
+        assert_eq!(json, r#"["Dairy","Egg"]"#);
+    }
+
+    #[test]
+    fn deserialize_valid_categories_from_json() {
+        let json = r#"["Dairy","Egg"]"#;
+        let categories: Categories = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            categories.as_slice(),
+            ["Dairy".to_string(), "Egg".to_string()]
+        );
+    }
+
+    #[test]
+    fn deserialize_trims_each_category() {
+        let json = r#"[" Dairy ", "Egg  "]"#;
+        let categories: Categories = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            categories.as_slice(),
+            ["Dairy".to_string(), "Egg".to_string()]
+        );
+    }
+
+    #[test]
+    fn deserialize_empty_categories_fails() {
+        let json = r#"[]"#;
+        let result: Result<Categories, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_empty_category_value_fails() {
+        let json = r#"["Dairy", ""]"#;
+        let result: Result<Categories, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_too_long_category_fails() {
+        let too_long = "k".repeat(Categories::MAX_CATEGORY_NAME_LENGTH + 1);
+        let json = serde_json::to_string(&vec!["Dairy".to_string(), too_long]).unwrap();
+        let result: Result<Categories, _> = serde_json::from_str(&json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_too_many_categories_fails() {
+        let too_many: Vec<String> = (0..Categories::MAX_CATEGORIES + 1)
+            .map(|i| format!("Category{}", i))
+            .collect();
+        let json = serde_json::to_string(&too_many).unwrap();
+        let result: Result<Categories, _> = serde_json::from_str(&json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_duplicate_category_fails() {
+        let json = r#"["Dairy", "dairy"]"#;
+        let result: Result<Categories, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn roundtrip_serde_json() {
+        let original = Categories::parse(vec!["Dairy".to_string(), "Egg".to_string()]).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Categories = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
 }

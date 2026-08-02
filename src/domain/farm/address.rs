@@ -174,4 +174,53 @@ mod tests {
         assert_eq!(parsed.to_string(), original);
         assert_eq!(parsed.as_str(), original);
     }
+
+    #[test]
+    fn as_ref_returns_the_underlying_str() {
+        let address = Address::parse("Bahnhofstrasse 1, 8001 Zürich".to_string()).unwrap();
+        assert_eq!(address.as_ref(), address.as_str());
+    }
+
+    #[test]
+    fn deserialize_valid_address_from_json() {
+        let json = r#""Bahnhofstrasse 1, 8001 Zürich""#;
+        let address: Address = serde_json::from_str(json).unwrap();
+        assert_eq!(address.as_str(), "Bahnhofstrasse 1, 8001 Zürich");
+    }
+
+    #[test]
+    fn deserialize_trims_whitespace() {
+        let json = r#""  Bahnhofstrasse 1, 8001 Zürich  ""#;
+        let address: Address = serde_json::from_str(json).unwrap();
+        assert_eq!(address.as_str(), "Bahnhofstrasse 1, 8001 Zürich");
+    }
+
+    #[test]
+    fn deserialize_empty_address_fails() {
+        let json = r#""""#;
+        let result: Result<Address, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_too_short_address_fails() {
+        let json = r#""A 1""#;
+        let result: Result<Address, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_too_long_address_fails() {
+        let json = format!(r#""{}""#, "a".repeat(Address::MAX_LENGTH + 1));
+        let result: Result<Address, _> = serde_json::from_str(&json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn roundtrip_serde_json() {
+        let original = Address::parse("Bahnhofstrasse 1, 8001 Zürich".to_string()).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Address = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
 }
