@@ -1,6 +1,6 @@
 [package]
 name = "farms"
-version = "0.3.0"
+version = "0.7.0"
 authors = ["Pedro Galveias <pedro.r.galveias@pm.me>", "Pedro Moleiro <pedro.r.p.moleiro@outlook.com>"]
 edition = "2024"
 
@@ -82,6 +82,8 @@ thiserror = "2.0"
 anyhow = "1.0"
 rand = "0.10"
 argon2 = { version = "0.5", features = ["std"] }
+phf = { version = "0.14.0", features = ["macros"] }      # compile-time breached passwords set
+unicode-general-category = "1.1.0"      # symbol/punctation classification
 
 # HTTP client for the email provider (rustls to match the rest of the stack).
 # Also used by the integration tests, hence the `cookies` feature.
@@ -92,7 +94,7 @@ reqwest = { version = "0.13", default-features = false, features = [
 ] }
 sha2 = "0.11"      # SHA-256 for verification token hashing
 hex = "0.4"        # hex-encode token hashes for storage
-validator = "0.20" # email validation (maintained crate, no handwritten regex)
+validator = "0.21.0" # email validation (maintained crate, no handwritten regex)
 
 [dev-dependencies]
 once_cell = "1"
