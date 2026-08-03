@@ -12,11 +12,17 @@ services:
       APP_DATABASE__PASSWORD: password
       APP_DATABASE__REQUIRE_SSL: false
       APP_REDIS_URL: "redis://redis:6379"
+      APP_TELEMETRY__ENABLED: false
+      APP_CLEANUP_WORKER__ENABLED: true
+      APP_ENVIRONMENT: local
+      APP_APPLICATION__HOST: 0.0.0.0
     ports:
       - "8000:8000"
 
   db:
-    image: postgres:18-alpine
+    build:
+      context: scripts/postgres
+      dockerfile: Dockerfile
     restart: always
     # Tests leak idle connections (pools dropped on test-runtime shutdown
     # can't run their async close); reap them server-side and give the

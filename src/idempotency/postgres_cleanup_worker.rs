@@ -1,5 +1,4 @@
-use crate::configuration::{IdempotencyEngine, Settings};
-use crate::startup::get_connection_pool;
+use crate::{configuration::Settings, startup::get_connection_pool};
 use sqlx::PgPool;
 use std::time::Duration;
 use tracing::Span;
@@ -11,25 +10,19 @@ pub enum ExpiryOutcome {
 }
 
 pub async fn run_expiry_worker_until_stopped(configuration: Settings) -> Result<(), anyhow::Error> {
-    let idempotency_settings = configuration.idempotency;
-    match idempotency_settings.engine {
-        IdempotencyEngine::Redis | IdempotencyEngine::None => {
-            return Ok(());
-        }
-        _ => {}
+    let settings = configuration.cleanup_worker;
+
+    if !settings.enabled {
+        return Ok(());
     }
 
     tracing::info!(
-        cleanup_worker_run_interval = idempotency_settings.cleanup_worker_run_interval,
+        cleanup_worker_run_interval = settings.run_interval,
         "Expiry worker starting."
     );
 
     let connection_pool = get_connection_pool(&configuration.database);
-    worker_loop(
-        connection_pool,
-        idempotency_settings.cleanup_worker_run_interval,
-    )
-    .await
+    worker_loop(connection_pool, settings.run_interval).await
 }
 
 async fn worker_loop(pool: PgPool, run_interval: u64) -> Result<(), anyhow::Error> {

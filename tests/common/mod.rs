@@ -364,6 +364,7 @@ pub async fn spawn_app(idempotency_engine: IdempotencyEngine) -> TestApp {
         // parallel tests don't inflate each other's per-IP register limit.
         c.registration.rate_limit.key_prefix = format!("rltest:{}", Uuid::new_v4());
         c.idempotency.engine = idempotency_engine;
+        c.cleanup_worker.enabled = true;
         // Dozens of tests run in parallel, and each spawns its own app pool
         // AND a TestApp helper pool. At the default 10 connections apiece the
         // suite exhausts Postgres' max_connections (100 on a stock server /
