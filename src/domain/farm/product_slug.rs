@@ -82,4 +82,10 @@ mod tests {
     fn overly_long_is_rejected() {
         assert_err!(ProductSlug::parse("a".repeat(65)));
     }
+
+    #[test]
+    fn as_ref_returns_the_underlying_str() {
+        let slug = ProductSlug::parse("strawberries".to_string()).unwrap();
+        assert_eq!(slug.as_ref(), slug.as_str());
+    }
 }

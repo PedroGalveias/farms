@@ -145,4 +145,16 @@ mod tests {
         assert_err!(Username::parse("ADMIN".to_string()));
         assert_err!(Username::parse("Root".to_string()));
     }
+
+    #[test]
+    fn as_ref_returns_the_underlying_str() {
+        let username = Username::parse("pedro_g".to_string()).unwrap();
+        assert_eq!(username.as_ref(), username.as_str());
+    }
+
+    #[test]
+    fn display_shows_the_normalised_username() {
+        let username = Username::parse("PedroG".to_string()).unwrap();
+        assert_eq!(username.to_string(), "pedrog");
+    }
 }

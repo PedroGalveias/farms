@@ -1,13 +1,8 @@
-#[cfg(feature = "opentelemetry")]
-use crate::configuration::TelemetryProtocol;
-use crate::configuration::{LogFormat, LoggingSettings, TelemetrySettings};
-#[cfg(feature = "opentelemetry")]
+use crate::configuration::{LogFormat, LoggingSettings, TelemetryProtocol, TelemetrySettings};
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
-#[cfg(feature = "opentelemetry")]
 use opentelemetry_otlp::{
     SpanExporter, WithExportConfig, WithTonicConfig, tonic_types::transport::ClientTlsConfig,
 };
-#[cfg(feature = "opentelemetry")]
 use opentelemetry_sdk::{
     Resource,
     propagation::TraceContextPropagator,
@@ -17,7 +12,6 @@ use tokio::task::JoinHandle;
 use tracing::{Subscriber, subscriber::set_global_default};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
-#[cfg(feature = "opentelemetry")]
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{
     fmt::{self, MakeWriter, format::FmtSpan},
@@ -45,7 +39,6 @@ where
         .unwrap_or_else(|_| EnvFilter::new(logging_settings.level.as_str()));
 
     // Add OpenTelemetry layer if enabled
-    #[cfg(feature = "opentelemetry")]
     if telemetry_settings.enabled {
         tracing::info!(
             "Initializing OpenTelemetry subscriber with endpoint: {}",
@@ -88,14 +81,6 @@ where
 
             set_global_default(subscriber).expect("Failed to set subscriber");
         }
-    }
-
-    #[cfg(not(feature = "opentelemetry"))]
-    if telemetry_settings.enabled {
-        tracing::warn!(
-            "OpenTelemetry is enabled in configuration but the 'opentelemetry' feature is not compiled in. \
-            Compile with --features opentelemetry to enabled OpenTelemetry support."
-        );
     }
 
     Ok(())
@@ -159,7 +144,6 @@ where
         .with(formatting_layer)
 }
 
-#[cfg(feature = "opentelemetry")]
 fn init_opentelemetry(settings: &TelemetrySettings) -> Result<Tracer, anyhow::Error> {
     // Set up trace context propagation
     global::set_text_map_propagator(TraceContextPropagator::new());
@@ -217,13 +201,26 @@ where
     R: Send + 'static,
 {
     let current_span = tracing::Span::current();
-    tokio::task::spawn_blocking(move || current_span.in_scope(f))
+    // `Span::in_scope` only pushes onto the thread-local span stack; it does
+    // nothing to install the subscriber itself. `spawn_blocking` hands off to
+    // a fresh OS thread, so without also propagating the dispatcher the span
+    // stack is pushed against whatever (possibly no-op) subscriber is default
+    // on that thread, and the span context is lost.
+    let dispatch = tracing::dispatcher::get_default(|d| d.clone());
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "this helper is the sanctioned wrapper"
+    )]
+    tokio::task::spawn_blocking(move || {
+        tracing::dispatcher::with_default(&dispatch, || current_span.in_scope(f))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::configuration::{LoggingLevel, TelemetryProtocol};
+    use crate::configuration::LoggingLevel;
+    use tracing::Instrument;
 
     #[test]
     fn test_telemetry_initialization_without_opentelemetry() {
@@ -242,5 +239,69 @@ mod tests {
 
         // This shouldn't panic
         assert!(init_telemetry(logging_settings, telemetry_settings, std::io::stdout).is_ok());
+    }
+
+    /// The property the whole helper exists for: work running on the blocking
+    /// pool must observe the span that was current when it was spawned.
+    ///
+    /// Asserted by comparing span ids rather than by scraping log output — a
+    /// string check would pass for a span that merely has the same *name*.
+    #[tokio::test]
+    async fn spawn_blocking_with_tracing_carries_the_callers_span() {
+        // A subscriber must be active or `Span::current()` is always disabled
+        // and both sides trivially compare equal to None.
+        let _guard =
+            tracing::subscriber::set_default(tracing_subscriber::fmt().with_test_writer().finish());
+
+        let outer = tracing::info_span!("outer");
+        let expected = outer.id();
+        assert!(
+            expected.is_some(),
+            "the test subscriber must actually record spans, or this proves nothing"
+        );
+
+        let observed = async {
+            spawn_blocking_with_tracing(tracing::Span::current)
+                .await
+                .expect("blocking task panicked")
+        }
+        .instrument(outer)
+        .await;
+
+        assert_eq!(
+            observed.id(),
+            expected,
+            "blocking work ran outside the caller's span — the trace tree would have a hole in it"
+        );
+    }
+
+    /// The negative control. Without this, the test above could pass because
+    /// `Span::current()` happens to be inherited some other way, and we would
+    /// never know the helper was doing anything.
+    #[tokio::test]
+    async fn bare_spawn_blocking_loses_the_span() {
+        let _guard =
+            tracing::subscriber::set_default(tracing_subscriber::fmt().with_test_writer().finish());
+
+        let outer = tracing::info_span!("outer");
+        let expected = outer.id();
+
+        let observed = async {
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "demonstrating why the lint exists"
+            )]
+            tokio::task::spawn_blocking(tracing::Span::current)
+                .await
+                .expect("blocking task panicked")
+        }
+        .instrument(outer)
+        .await;
+
+        assert_ne!(
+            observed.id(),
+            expected,
+            "if this ever passes, tokio started propagating spans and the helper is redundant"
+        );
     }
 }

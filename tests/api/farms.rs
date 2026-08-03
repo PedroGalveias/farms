@@ -9,11 +9,16 @@ use fake::{
 use farms::{
     configuration::IdempotencyEngine,
     domain::farm::{Address, Canton, Name, Point},
-    idempotency::{ExpiryOutcome, HeaderPair, IdempotencyData, IdempotencyKey},
+    idempotency::{
+        ExpiryOutcome, HeaderPair, IdempotencyData, IdempotencyKey, run_expiry_worker_until_stopped,
+    },
 };
 use rand::RngExt;
-use std::ops::Sub;
-use std::{collections::HashSet, ops::Add, time::Duration};
+use std::{
+    collections::HashSet,
+    ops::{Add, Sub},
+    time::Duration,
+};
 use uuid::Uuid;
 
 /// A farm's own fields for tests — the taxonomy (categories/products) is a
@@ -877,4 +882,41 @@ async fn idempotency_worker_will_only_delete_expired_keys() {
 
     assert_eq!(idempotency_rows, non_expired_rows_to_create);
     assert_eq!(ExpiryOutcome::RowsDeleted(expired_rows_to_create), outcome);
+}
+
+#[tokio::test]
+async fn idempotency_worker_thread_will_delete_expired_keys() {
+    let app = spawn_app(IdempotencyEngine::Postgres).await;
+    let user = TestUser::generate_user();
+    let now = Utc::now();
+    user.store(&app.db_pool).await;
+
+    let expired_rows_to_create: u64 = 2;
+    for _ in 0..expired_rows_to_create {
+        app.create_idempotency_row(
+            user.id,
+            Uuid::new_v4().to_string(),
+            now.sub(Duration::from_hours(1)),
+        )
+        .await;
+    }
+
+    let cleanup_worker = tokio::spawn(run_expiry_worker_until_stopped(app.configuration.clone()));
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let idempotency_rows = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let rows = app.get_idempotency_rows().await;
+            if rows == 0 {
+                break rows;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("Expiry worker did not delete expired rows before timeout.");
+
+    assert_eq!(idempotency_rows, 0);
+    cleanup_worker.abort();
 }

@@ -142,4 +142,41 @@ mod tests {
         let farm_name = "Hofträumli - Hofladen".to_string();
         assert_ok!(Name::parse(farm_name));
     }
+
+    #[test]
+    fn as_ref_returns_the_underlying_str() {
+        let name = Name::parse("Ackermatthof".to_string()).unwrap();
+        assert_eq!(name.as_ref(), name.as_str());
+    }
+
+    #[test]
+    fn display_shows_the_name() {
+        let name = Name::parse("Ackermatthof".to_string()).unwrap();
+        assert_eq!(name.to_string(), "Ackermatthof");
+    }
+
+    #[test]
+    fn deserialize_valid_name_from_json() {
+        let json = r#""Ackermatthof""#;
+        let name: Name = serde_json::from_str(json).unwrap();
+        assert_eq!(name.as_str(), "Ackermatthof");
+    }
+
+    // Unlike `parse`, `Deserialize` trusts the data came from our own
+    // database and skips validation entirely - it must accept a value that
+    // `parse` itself would reject.
+    #[test]
+    fn deserialize_does_not_re_validate_the_value() {
+        let json = r#""""#;
+        let name: Name = serde_json::from_str(json).unwrap();
+        assert_eq!(name.as_str(), "");
+    }
+
+    #[test]
+    fn roundtrip_serde_json() {
+        let original = Name::parse("Ackermatthof".to_string()).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Name = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
 }

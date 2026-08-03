@@ -1,6 +1,7 @@
-use crate::authentication::registration::hash_verification_token;
-use crate::domain::user::UserStatus;
-use crate::errors::error_chain_fmt;
+use crate::{
+    authentication::registration::hash_verification_token, domain::user::UserStatus,
+    errors::error_chain_fmt,
+};
 use anyhow::Context;
 use chrono::Utc;
 use sqlx::PgPool;
@@ -77,4 +78,30 @@ pub async fn consume_verification_token(
         .context("Failed to commit email verification transaction.")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_token_debug_prints_just_the_message() {
+        let err = VerifyEmailError::InvalidToken;
+
+        let output = format!("{err:?}");
+
+        assert_eq!(output, "Invalid verification token.\n\n");
+    }
+
+    #[test]
+    fn unexpected_error_debug_prints_the_source_chain() {
+        let source = anyhow::anyhow!("connection refused")
+            .context("Failed to consume the verification token.");
+        let err = VerifyEmailError::UnexpectedError(source);
+
+        let output = format!("{err:?}");
+
+        assert!(output.starts_with("Failed to consume the verification token.\n"));
+        assert!(output.contains("Caused by:\n\tconnection refused"));
+    }
 }

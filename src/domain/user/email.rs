@@ -116,4 +116,10 @@ mod tests {
         let email = Email::parse("Person@Example.COM".to_string()).unwrap();
         assert_eq!("person@example.com", email.as_str());
     }
+
+    #[test]
+    fn as_ref_returns_the_underlying_str() {
+        let email = Email::parse("person@example.com".to_string()).unwrap();
+        assert_eq!(email.as_ref(), email.as_str());
+    }
 }

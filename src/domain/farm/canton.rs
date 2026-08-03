@@ -111,4 +111,52 @@ mod tests {
         let canton = "";
         assert_err!(Canton::parse(canton.to_string()));
     }
+
+    #[test]
+    fn as_ref_returns_the_underlying_str() {
+        let canton = Canton::parse("zh".to_string()).unwrap();
+        assert_eq!(canton.as_ref(), canton.as_str());
+    }
+
+    #[test]
+    fn display_shows_the_uppercased_code() {
+        let canton = Canton::parse("zh".to_string()).unwrap();
+        assert_eq!(canton.to_string(), "ZH");
+    }
+
+    #[test]
+    fn deserialize_valid_canton_from_json() {
+        let json = r#""ZH""#;
+        let canton: Canton = serde_json::from_str(json).unwrap();
+        assert_eq!(canton.as_str(), "ZH");
+    }
+
+    #[test]
+    fn deserialize_uppercases_a_lowercase_code() {
+        let json = r#""zh""#;
+        let canton: Canton = serde_json::from_str(json).unwrap();
+        assert_eq!(canton.as_str(), "ZH");
+    }
+
+    #[test]
+    fn deserialize_empty_canton_fails() {
+        let json = r#""""#;
+        let result: Result<Canton, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn deserialize_invalid_canton_fails() {
+        let json = r#""DE""#;
+        let result: Result<Canton, _> = serde_json::from_str(json);
+        assert_err!(result);
+    }
+
+    #[test]
+    fn roundtrip_serde_json() {
+        let original = Canton::parse("ZH".to_string()).unwrap();
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: Canton = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
 }

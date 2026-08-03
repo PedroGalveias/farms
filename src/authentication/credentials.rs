@@ -1,12 +1,16 @@
-use crate::authentication::password::{compute_password_hash, verify_password_hash};
-use crate::domain::user::{Email, Role, UserStatus};
-use crate::errors::error_chain_fmt;
-use crate::telemetry::spawn_blocking_with_tracing;
+use crate::{
+    authentication::password::{compute_password_hash, verify_password_hash},
+    domain::user::{Email, Role, UserStatus},
+    errors::error_chain_fmt,
+    telemetry::spawn_blocking_with_tracing,
+};
 use anyhow::Context;
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
-use std::fmt::{Debug, Formatter};
-use std::sync::LazyLock;
+use std::{
+    fmt::{Debug, Formatter},
+    sync::LazyLock,
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +46,11 @@ static DUMMY_PASSWORD_HASH: LazyLock<SecretString> = LazyLock::new(|| {
         .expect("Failed to compute dummy password hash.")
 });
 
-#[tracing::instrument(name = "Validate credentials", skip(email, password, pool))]
+#[tracing::instrument(
+    name = "Validate credentials",
+    skip(email, password, pool),
+    fields(user_id = tracing::field::Empty)
+)]
 pub async fn validate_credentials(
     email: &str,
     password: SecretString,
@@ -79,7 +87,10 @@ pub async fn validate_credentials(
     // unknown-email, and wrong-password all cost the same and return the same
     // error - no account enumeration via response differences.
     match candidate {
-        Some((user, UserStatus::Active)) => Ok(user),
+        Some((user, UserStatus::Active)) => {
+            tracing::Span::current().record("user_id", tracing::field::display(user.id));
+            Ok(user)
+        }
         _ => Err(ValidateCredentialsError::InvalidCredentials(
             anyhow::anyhow!("Invalid email or password."),
         )),
@@ -163,4 +174,35 @@ pub async fn get_user_by_id(
     });
 
     Ok(user)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_credentials_debug_prints_the_source_chain() {
+        let err = ValidateCredentialsError::InvalidCredentials(anyhow::anyhow!(
+            "Invalid email or password."
+        ));
+
+        let output = format!("{err:?}");
+
+        assert_eq!(
+            output,
+            "Invalid email or password\n\nCaused by:\n\tInvalid email or password.\n"
+        );
+    }
+
+    #[test]
+    fn unexpected_error_debug_prints_the_source_chain() {
+        let source =
+            anyhow::anyhow!("connection refused").context("Failed to retrieve stored credentials.");
+        let err = ValidateCredentialsError::UnexpectedError(source);
+
+        let output = format!("{err:?}");
+
+        assert!(output.starts_with("Failed to retrieve stored credentials.\n"));
+        assert!(output.contains("Caused by:\n\tconnection refused"));
+    }
 }

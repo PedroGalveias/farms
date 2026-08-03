@@ -1,0 +1,7 @@
+# Blocking work must carry the caller's tracing span, or Argon2 hashing shows up
+# as an orphan trace with no parent request — invisible exactly when you are
+# debugging a latency spike. `spawn_blocking_with_tracing` is the only way to
+# spawn blocking work in this crate.
+disallowed-methods = [
+    { path = "tokio::task::spawn_blocking", reason = "use crate::telemetry::spawn_blocking_with_tracing so the request span is propagated" },
+]
