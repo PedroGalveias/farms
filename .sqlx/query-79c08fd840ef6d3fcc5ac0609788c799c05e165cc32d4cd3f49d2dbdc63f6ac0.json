@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT c.slug, count(DISTINCT m.farm_id) AS \"count!\"\n        FROM product_categories c\n        LEFT JOIN (\n            SELECT fc.category_id, fc.farm_id\n            FROM farm_categories fc\n            UNION\n            SELECT p.category_id, fp.farm_id\n            FROM farm_products fp\n            JOIN products p ON p.id = fp.product_id\n        ) m ON m.category_id = c.id\n        GROUP BY c.id, c.slug\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "slug",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "product_categories",
+            "name": "slug"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "79c08fd840ef6d3fcc5ac0609788c799c05e165cc32d4cd3f49d2dbdc63f6ac0"
+}

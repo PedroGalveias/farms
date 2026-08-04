@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod authentication;
+pub mod facets;
 pub mod farms;
 mod health_check;
 pub mod suggestions;

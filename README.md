@@ -197,6 +197,7 @@ The service currently exposes:
 - `GET /farms` — the directory (filters, geo, pagination — see below)
 - `GET /farms/{id}`
 - `GET /taxonomy` — the filtering vocabulary with display labels (see below)
+- `GET /facets` — how many farms sit behind each filter option (see below)
 - `POST /farms`
 - `POST /farms/{id}/product-suggestions` — suggest a product for a farm
 - `GET /admin/product-suggestions` — moderation queue (admin only)
@@ -297,6 +298,51 @@ Product labels in fr/it/rm do not exist in the source dataset. Until they are
 authored ([#162](https://github.com/PedroGalveias/farms/issues/162)), asking for
 `?lang=rm` returns English product names with `"translated": false` — which is
 the honest answer, not a bug.
+
+### Filter Counts — `GET /facets`
+
+How many farms sit behind each filter option, so a client can build a picker
+without holding the whole directory in memory.
+
+This exists for a specific reason. A directory that derives its own filter
+options from the farms it was handed can only offer the options present in that
+subset — so the moment it asks the API for a *filtered* set, its canton picker
+contains only the canton it already filtered to, and the visitor cannot get back
+out. Counts have to come from somewhere that always sees everything.
+
+```
+GET /facets
+GET /facets?lang=de
+```
+
+```json
+{
+  "lang": "de",
+  "total": 3155,
+  "cantons": [{ "code": "AG", "count": 118 }, { "code": "BE", "count": 727 }],
+  "categories": [
+    { "slug": "fruits", "name": "Früchte", "translated": true, "count": 412 },
+    { "slug": "fish-seafood", "name": "Fisch und Meeresfrüchte", "translated": true, "count": 0 }
+  ]
+}
+```
+
+- **`cantons`** lists only cantons that have farms — a canton nobody farms in
+  would be a dead option in a picker.
+- **`categories`** is exhaustive, including counts of zero, mirroring
+  `GET /taxonomy`: a picker needs the full vocabulary, and the count is what
+  tells it which options to grey out.
+- A farm counts once per category whether it is tagged **directly** or through
+  a **product** in that category — the same "any of" rule `?category=` applies
+  on `GET /farms`, so a count always agrees with what filtering would return.
+
+Counts are **unfiltered on purpose**: they describe the whole directory, so an
+option's count does not shift as other filters are applied. That is what makes
+them a stable ordering for a picker. Contextual counts are a different question
+and would take the same filter parameters as `GET /farms`.
+
+Cached `public, max-age=300, stale-while-revalidate=3600` — matched to how long
+a client caches `GET /farms`, so a count never disagrees with the list beside it.
 
 ### The Vocabulary — `GET /taxonomy`
 
