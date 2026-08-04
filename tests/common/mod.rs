@@ -669,6 +669,26 @@ pub async fn insert_test_farm(pool: &PgPool, name: &str) -> Uuid {
     id
 }
 
+/// Insert a bare farm in a specific canton. Same as `insert_test_farm`, for
+/// tests that care where a farm is rather than only that it exists.
+#[allow(dead_code)]
+pub async fn insert_test_farm_in_canton(pool: &PgPool, name: &str, canton: &str) -> Uuid {
+    let id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO farms (id, name, address, canton, coordinates, created_at, updated_at)
+        VALUES ($1, $2, 'Somewhere 1', $3, POINT(8.5, 47.4), now(), NULL)
+        "#,
+        id,
+        name,
+        canton,
+    )
+    .execute(pool)
+    .await
+    .expect("Failed to insert test farm.");
+    id
+}
+
 /// Link a farm to a granular product.
 #[allow(dead_code)]
 pub async fn link_farm_product(pool: &PgPool, farm_id: Uuid, product_id: i32) {

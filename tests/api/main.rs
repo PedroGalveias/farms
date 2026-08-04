@@ -3,6 +3,7 @@ mod helpers;
 
 mod authentication;
 mod directory;
+mod facets;
 mod farms;
 mod health_check;
 mod language;

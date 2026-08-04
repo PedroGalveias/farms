@@ -1,0 +1,33 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT f.canton AS \"canton: Canton\", count(*) AS \"count!\"\n        FROM farms f\n        GROUP BY f.canton\n        ORDER BY f.canton\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "canton: Canton",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "farms",
+            "name": "canton"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "2f75b4ebded8d0ed489e6ac5668fd9632db086dc7c4fcd37e90e9d555d1aaaf1"
+}
