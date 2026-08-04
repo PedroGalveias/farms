@@ -310,7 +310,7 @@ subset — so the moment it asks the API for a *filtered* set, its canton picker
 contains only the canton it already filtered to, and the visitor cannot get back
 out. Counts have to come from somewhere that always sees everything.
 
-```
+```text
 GET /facets
 GET /facets?lang=de
 ```

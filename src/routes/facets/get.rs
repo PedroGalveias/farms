@@ -91,9 +91,24 @@ pub async fn get_facets(
     let language = Language::from_query(query.lang.as_deref())
         .map_err(|e| FarmError::ValidationError(e.to_string()))?;
 
-    // One round trip per facet rather than one query with several CTEs: each is
-    // an index-friendly aggregate, and keeping them apart means a change to one
-    // cannot silently alter another's grouping.
+    // All three aggregates read ONE snapshot of the directory.
+    //
+    // Separate statements on the pool each see their own committed state, so a
+    // farm created or deleted between them could leave `total`, `cantons` and
+    // `categories` describing different directories. This response is then
+    // cached for five minutes, so such an inconsistency would be served over
+    // and over rather than corrected on the next request. REPEATABLE READ pins
+    // one snapshot for the whole transaction; READ ONLY says plainly that
+    // nothing here writes.
+    let mut tx = pool
+        .begin()
+        .await
+        .context("Failed to start the facets transaction.")?;
+    sqlx::query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        .execute(&mut *tx)
+        .await
+        .context("Failed to pin the facets snapshot.")?;
+
     let canton_rows = sqlx::query!(
         r#"
         SELECT f.canton AS "canton: Canton", count(*) AS "count!"
@@ -102,7 +117,7 @@ pub async fn get_facets(
         ORDER BY f.canton
         "#,
     )
-    .fetch_all(pool.get_ref())
+    .fetch_all(&mut *tx)
     .await
     .context("Failed to count farms per canton.")?;
 
@@ -125,14 +140,20 @@ pub async fn get_facets(
         GROUP BY c.id, c.slug
         "#,
     )
-    .fetch_all(pool.get_ref())
+    .fetch_all(&mut *tx)
     .await
     .context("Failed to count farms per category.")?;
 
     let total = sqlx::query_scalar!(r#"SELECT count(*) AS "count!" FROM farms"#)
-        .fetch_one(pool.get_ref())
+        .fetch_one(&mut *tx)
         .await
         .context("Failed to count farms.")?;
+
+    // Read-only, so commit and rollback are equivalent; commit is the honest
+    // close and returns the connection to the pool either way.
+    tx.commit()
+        .await
+        .context("Failed to close the facets transaction.")?;
 
     let counts: std::collections::HashMap<&str, i64> = category_rows
         .iter()
