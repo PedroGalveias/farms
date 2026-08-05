@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1-alpine3.22 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.97-alpine3.24 AS chef
 WORKDIR /app
 RUN apk add --no-cache lld clang openssl-dev
 ENV CARGO_TERM_PROGRESS_WHEN=never
@@ -19,12 +19,14 @@ ENV SQLX_OFFLINE=true
 # Build our project
 RUN cargo build --release --bin farms
 
-FROM alpine:3.22 AS runtime
+FROM alpine:3.24 AS runtime
 WORKDIR /app
-RUN apk add --no-cache openssl ca-certificates
+RUN apk add --no-cache openssl ca-certificates && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/target/release/farms farms
 COPY configuration configuration
 
+USER appuser
 ENV APP_ENVIRONMENT=production
 EXPOSE 8000
 

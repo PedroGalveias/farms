@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -x
 set -eo pipefail
 
 if ! [ -x "$(command -v sqlx)" ]; then
@@ -32,6 +31,8 @@ then
   fi
   CONTAINER_NAME="postgres_$(date '+%s')"
   # Launch postgres using Docker
+  docker build -t postgres/pg_cron scripts/postgres
+
   docker run \
     --env POSTGRES_USER="${DB_USER}" \
     --env POSTGRES_PASSWORD="${DB_PASSWORD}" \
@@ -43,7 +44,7 @@ then
     --publish "${DB_PORT}":5432 \
     --detach \
     --name "${CONTAINER_NAME}" \
-    postgres:18-alpine -N 1000
+    postgres/pg_cron -N 1000
     #                ^ Increased maximum number of connections for testing purposes
 
     until [ \
