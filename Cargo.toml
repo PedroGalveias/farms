@@ -11,7 +11,15 @@ path = "src/lib.rs"
 path = "src/main.rs"
 name = "farms"
 
+[workspace]
+members = ["crates/farms-routing", "crates/farms-routing-import"]
+resolver = "3"
+
 [dependencies]
+# routing engine
+farms-routing = { path = "crates/farms-routing" }
+memmap2 = "0.9"
+
 # Web framework
 actix-web = "4.14"
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }

@@ -1,6 +1,11 @@
 /target
 .idea
-.env
+
+# Every .env variant, not just the exact name: backups like .env.bak-pooler
+# hold the same live credentials but were not matched by a bare `.env`.
+.env*
+!.env.example
+
 /**/__pycache__/**/*
 /coverage
 .DS_Store

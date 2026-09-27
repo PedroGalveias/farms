@@ -1,0 +1,10 @@
+[package]
+name = "farms-routing-import"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+farms-routing = { path = "../farms-routing" }
+osmpbf = "0.3"
+rayon = "1" # Preprocessing only; keep output order deterministic.
+rkyv = { version = "0.7", features = ["validation"] }
