@@ -21,6 +21,10 @@ impl Coord {
     pub fn distance_m(self, other: Self) -> f64 {
         (self.e - other.e).hypot(self.n - other.n)
     }
+    
+    pub fn is_finite(self) -> bool {
+        self.e.is_finite() && self.n.is_finite()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
