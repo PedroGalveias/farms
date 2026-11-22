@@ -1,6 +1,6 @@
 [package]
 name = "farms"
-version = "0.3.0"
+version = "0.6.1"
 authors = ["Pedro Galveias <pedro.r.galveias@pm.me>", "Pedro Moleiro <pedro.r.p.moleiro@outlook.com>"]
 edition = "2024"
 
@@ -13,11 +13,11 @@ name = "farms"
 
 [dependencies]
 # Web framework
-actix-web = "4.14"
-tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
+actix-web = "4.20"
+tokio = { version = "1.54", features = ["macros", "rt-multi-thread"] }
 
 # Databases
-redis = { version = "1.4", features = [
+redis = { version = "1.8", features = [
     "tokio-rustls-comp",
     "connection-manager"
 ] }
@@ -53,14 +53,14 @@ tracing-log = "0.2"
 tracing-actix-web = ">=0.7.22"
 
 # OpenTelemetry
-opentelemetry = { version = "0.32", features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "trace", "metrics"] }
-opentelemetry-otlp = { version = "0.32", default-features = false, features = [
+opentelemetry = { version = "0.33", features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio", "trace", "metrics"] }
+opentelemetry-otlp = { version = "0.33", default-features = false, features = [
     "trace", "metrics", "internal-logs",
     "grpc-tonic", "tls-ring", "tls-roots",
     "http-proto", "reqwest-blocking-client", "reqwest-rustls"
 ] }
-tracing-opentelemetry = "0.33"
+tracing-opentelemetry = "0.34"
 
 # Utilities
 uuid = { version = "1.23", features = ["v4", "serde"] }
