@@ -438,12 +438,55 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .connect_with(config.with_db())
         .await
         .expect("Failed to connect to Postgres.");
-    sqlx::migrate!("./migrations")
+    test_migrator(&connection_pool)
+        .await
         .run(&connection_pool)
         .await
         .expect("Failed to migrate the database");
 
     connection_pool
+}
+
+/// Migrations that set up `pg_cron` (enable the extension, schedule the
+/// nightly idempotency cleanup job).
+const PG_CRON_MIGRATIONS: [i64; 2] = [20260803211457, 20260803212739];
+
+/// The full migration set, minus the `pg_cron` migrations when the server
+/// can't host `pg_cron` in this (per-test, UUID-named) database.
+///
+/// `pg_cron` only installs into the single database named by the
+/// postmaster-level `cron.database_name` setting; anywhere else its install
+/// script raises `P0001`, which the migration's `feature_not_supported`
+/// fallback doesn't catch. Against a `pg_cron`-enabled server (e.g. the
+/// `scripts/postgres` image used by `init_db.sh` / docker-compose) every test
+/// database is "anywhere else". On a server without `pg_cron` (CI's plain
+/// Postgres) `cron.database_name` is unset, so the full set runs and those
+/// migrations exercise their own no-op fallback.
+async fn test_migrator(pool: &PgPool) -> sqlx::migrate::Migrator {
+    let migrator = sqlx::migrate!("./migrations");
+    assert!(
+        PG_CRON_MIGRATIONS
+            .iter()
+            .all(|v| migrator.version_exists(*v)),
+        "PG_CRON_MIGRATIONS is out of sync with ./migrations"
+    );
+
+    let (current_db, cron_db): (String, Option<String>) =
+        sqlx::query_as("SELECT current_database(), current_setting('cron.database_name', true)")
+            .fetch_one(pool)
+            .await
+            .expect("Failed to read cron.database_name.");
+
+    match cron_db {
+        Some(cron_db) if cron_db != current_db => sqlx::migrate::Migrator::with_migrations(
+            migrator
+                .iter()
+                .filter(|m| !PG_CRON_MIGRATIONS.contains(&m.version))
+                .cloned()
+                .collect(),
+        ),
+        _ => migrator,
+    }
 }
 
 #[allow(dead_code)]
