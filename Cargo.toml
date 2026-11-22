@@ -72,7 +72,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 thiserror = "2.0"
 anyhow = "1.0"
 rand = "0.10"
-argon2 = { version = "0.5", features = ["std"] }
+argon2 = "0.6"
 
 # HTTP client for the email provider (rustls to match the rest of the stack).
 # Also used by the integration tests, hence the `cookies` feature.
