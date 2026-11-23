@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn redis_debug_prints_the_source_chain() {
         let source = deadpool_redis::redis::RedisError::from((
-            deadpool_redis::redis::ErrorKind::IoError,
+            deadpool_redis::redis::ErrorKind::Io,
             "connection reset",
         ));
         let err = IdempotencyPersistenceError::Redis(source);

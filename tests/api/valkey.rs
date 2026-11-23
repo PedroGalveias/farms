@@ -21,6 +21,10 @@ async fn must_finish<F: Future>(future: F) -> F::Output {
         .expect("operation hung: no Redis timeout was applied")
 }
 
+/// Longer than redis 1.x's default 500ms response timeout, shorter than the
+/// timeout configured in `command_uses_configured_timeout_not_redis_default`.
+const SLOW_REPLY_DELAY: Duration = Duration::from_secs(1);
+
 fn redis_settings(uri: String, pool_max_size: usize) -> RedisSettings {
     RedisSettings {
         uri: SecretString::from(uri),
@@ -47,7 +51,8 @@ async fn spawn_silent_server() -> String {
 
 /// Answers `+OK` to every command (enough for the client's connection
 /// handshake) until it receives one containing `STALL`, then goes silent on
-/// that connection.
+/// that connection. A command containing `SLOW` is answered after
+/// `SLOW_REPLY_DELAY`.
 async fn spawn_stalling_server() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -64,6 +69,9 @@ async fn spawn_stalling_server() -> String {
                     if chunk.windows(5).any(|window| window == b"STALL") {
                         // Keep the socket open, never reply.
                         std::future::pending::<()>().await;
+                    }
+                    if chunk.windows(4).any(|window| window == b"SLOW") {
+                        tokio::time::sleep(SLOW_REPLY_DELAY).await;
                     }
                     // One RESP array header (`*<n>\r\n` at a line start) per command.
                     let commands = chunk
@@ -129,5 +137,32 @@ async fn pool_get_times_out_when_pool_is_exhausted() {
     assert!(
         result.is_err(),
         "Waiting for a free connection must time out"
+    );
+}
+
+#[tokio::test]
+async fn command_uses_configured_timeout_not_redis_default() {
+    // redis 1.x times commands out after 500ms by default. A reply that takes
+    // 1s must still succeed with `timeout_seconds = 3`, proving the configured
+    // value is what applies.
+    let settings = RedisSettings {
+        timeout_seconds: Some(3),
+        ..redis_settings(spawn_stalling_server().await, 2)
+    };
+    let pool = get_redis_connection_pool(&settings).unwrap();
+    let mut connection = must_finish(pool.get())
+        .await
+        .expect("The handshake is answered, so a connection should be created");
+
+    let result = must_finish(
+        redis::cmd("GET")
+            .arg("SLOW")
+            .query_async::<String>(&mut connection),
+    )
+    .await;
+
+    assert_eq!(
+        "OK",
+        result.expect("A reply within the configured timeout must succeed")
     );
 }
