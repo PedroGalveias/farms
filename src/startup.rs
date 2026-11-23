@@ -16,7 +16,7 @@ use actix_web::{
     web::Data,
 };
 use anyhow::Context;
-use deadpool_redis::{Config, Pool, Runtime};
+use deadpool_redis::{Manager, Pool, Runtime, redis::AsyncConnectionConfig};
 use secrecy::ExposeSecret;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::net::TcpListener;
@@ -67,11 +67,25 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
 
 pub fn get_redis_connection_pool(configuration: &RedisSettings) -> Result<Pool, anyhow::Error> {
     let max_connections = configuration.pool_max_size.unwrap_or(10);
-    let config = Config::from_url(configuration.uri.expose_secret());
-    let pool = config
-        .builder()?
+    // One bound for every Valkey wait, so a stalled server (accepts TCP but
+    // never answers) fails requests fast instead of hanging them. The same pool
+    // backs the session store, so sessions get the same timeouts.
+    let timeout = std::time::Duration::from_secs(configuration.timeout_seconds.unwrap_or(2));
+    let connection_config = AsyncConnectionConfig::new()
+        // TCP connect, TLS handshake and connection setup.
+        .set_connection_timeout(Some(timeout))
+        // Every command sent on the connection.
+        .set_response_timeout(Some(timeout));
+    let manager = Manager::new_with_config(configuration.uri.expose_secret(), connection_config)?;
+    let pool = Pool::builder(manager)
         .max_size(max_connections)
         .runtime(Runtime::Tokio1)
+        // Waiting for a free connection when the pool is exhausted.
+        .wait_timeout(Some(timeout))
+        // Opening a connection, as seen by the pool (covers the above).
+        .create_timeout(Some(timeout))
+        // Health-checking (PING) an idle connection before handing it out.
+        .recycle_timeout(Some(timeout))
         .build()?;
 
     Ok(pool)

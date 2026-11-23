@@ -352,3 +352,72 @@ async fn register_is_rate_limited() {
         limited.status().as_u16()
     );
 }
+
+fn email_rate_limit_key(app: &TestApp, email: &str) -> String {
+    let prefix = &app.configuration.registration.rate_limit.key_prefix;
+    format!("{prefix}:register:email:{email}")
+}
+
+async fn ttl(app: &TestApp, key: &str) -> i64 {
+    let mut connection = app.redis_pool.get().await.unwrap();
+    deadpool_redis::redis::cmd("TTL")
+        .arg(key)
+        .query_async(&mut connection)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn register_rate_limit_key_gets_an_expiry() {
+    let app = spawn_app(IdempotencyEngine::None).await;
+    mount_email_ok(&app).await;
+    let window = app.configuration.registration.rate_limit.window_seconds as i64;
+    let email = unique_email();
+
+    let response = app
+        .post_register(&serde_json::json!({
+            "username": unique_username(), "email": email, "password": VALID_PASSWORD,
+        }))
+        .await;
+    assert_eq!(StatusCode::ACCEPTED.as_u16(), response.status().as_u16());
+
+    let ttl = ttl(&app, &email_rate_limit_key(&app, &email)).await;
+    assert!(
+        (1..=window).contains(&ttl),
+        "Rate limit key should expire within the window, TTL was {ttl}"
+    );
+}
+
+#[tokio::test]
+async fn register_rate_limit_repairs_a_key_left_without_expiry() {
+    // A counter whose EXPIRE never landed (e.g. the connection failed between
+    // INCR and EXPIRE) would otherwise rate-limit that client forever.
+    let app = spawn_app(IdempotencyEngine::None).await;
+    mount_email_ok(&app).await;
+    let window = app.configuration.registration.rate_limit.window_seconds as i64;
+    let email = unique_email();
+    let key = email_rate_limit_key(&app, &email);
+    {
+        let mut connection = app.redis_pool.get().await.unwrap();
+        deadpool_redis::redis::cmd("SET")
+            .arg(&key)
+            .arg(1)
+            .query_async::<()>(&mut connection)
+            .await
+            .unwrap();
+    }
+    assert_eq!(-1, ttl(&app, &key).await, "precondition: key has no expiry");
+
+    let response = app
+        .post_register(&serde_json::json!({
+            "username": unique_username(), "email": email, "password": VALID_PASSWORD,
+        }))
+        .await;
+    assert_eq!(StatusCode::ACCEPTED.as_u16(), response.status().as_u16());
+
+    let ttl = ttl(&app, &key).await;
+    assert!(
+        (1..=window).contains(&ttl),
+        "Rate limit key left without expiry should get one, TTL was {ttl}"
+    );
+}

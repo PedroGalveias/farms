@@ -29,4 +29,5 @@ jobs:
       - name: Scan for vulnerabilities with cargo deny
         run: cargo deny check advisories
       - name: Scan for vulnerabilities with cargo audit
+        if: success() || failure()
         run: cargo audit

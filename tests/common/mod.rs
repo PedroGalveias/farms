@@ -148,7 +148,7 @@ impl TestApp {
     #[allow(dead_code)]
     pub async fn post_farm(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
-            .post(format!("{}/farms", &self.address))
+            .post(format!("{}/farms", self.address))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -170,7 +170,7 @@ impl TestApp {
     #[allow(dead_code)]
     pub async fn post_logout(&self) -> reqwest::Response {
         self.api_client
-            .post(format!("{}/logout", &self.address))
+            .post(format!("{}/logout", self.address))
             .send()
             .await
             .expect("Failed to execute request.")
@@ -179,7 +179,7 @@ impl TestApp {
     #[allow(dead_code)]
     pub async fn get_me(&self) -> reqwest::Response {
         self.api_client
-            .get(format!("{}/me", &self.address))
+            .get(format!("{}/me", self.address))
             .send()
             .await
             .expect("Failed to execute request.")
@@ -188,7 +188,7 @@ impl TestApp {
     #[allow(dead_code)]
     pub async fn post_register(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
-            .post(format!("{}/register", &self.address))
+            .post(format!("{}/register", self.address))
             .header("Content-Type", "application/json")
             .json(body)
             .send()
@@ -199,7 +199,7 @@ impl TestApp {
     #[allow(dead_code)]
     pub async fn post_verify_email(&self, body: &serde_json::Value) -> reqwest::Response {
         self.api_client
-            .post(format!("{}/verify-email", &self.address))
+            .post(format!("{}/verify-email", self.address))
             .header("Content-Type", "application/json")
             .json(body)
             .send()

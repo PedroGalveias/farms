@@ -421,6 +421,10 @@ Registration is public and email-verified:
 Verification tokens are stored only as SHA-256 hashes; the raw token exists solely in the email sent to the user.
 Registration is rate limited per IP and per email using Valkey.
 
+To log every user out (e.g. after rolling back actix-session, or a suspected session compromise), see
+[`docs/clearing-sessions.md`](docs/clearing-sessions.md): rotate the session secret, or delete only the `sess:*` keys
+with [`scripts/clear_sessions.sh`](scripts/clear_sessions.sh) (dry run unless `--yes`).
+
 ### Testing
 
 ```bash

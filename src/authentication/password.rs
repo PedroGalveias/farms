@@ -1,21 +1,15 @@
 use anyhow::Context;
-use argon2::{
-    Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
-    password_hash::{SaltString, rand_core::OsRng},
-};
+use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
 use secrecy::{ExposeSecret, SecretString};
 
 pub fn compute_password_hash(password: SecretString) -> Result<SecretString, anyhow::Error> {
-    // Generate Salt
-    let salt = SaltString::generate(&mut OsRng);
-
-    // Create Digest
+    // `hash_password` draws a random 16-byte salt from the OS RNG (getrandom).
     let digest = Argon2::new(
         Algorithm::Argon2id,
         Version::V0x13,
         Params::new(15000, 2, 1, None).context("Failed to build Argon2 parameters.")?,
     )
-    .hash_password(password.expose_secret().as_bytes(), &salt)
+    .hash_password(password.expose_secret().as_bytes())
     .context("Failed to hash password")?
     .to_string();
 
@@ -276,5 +270,47 @@ mod tests {
 
         // Assert
         assert!(result.is_ok(), "Should verify empty password correctly");
+    }
+
+    /// Produced by argon2 0.5.3 with the same algorithm and params as
+    /// `compute_password_hash` (fixed salt), for password
+    /// `ARGON2_0_5_FIXTURE_PASSWORD`. Guards that hashes already stored in the
+    /// database keep verifying across argon2 crate upgrades.
+    const ARGON2_0_5_FIXTURE_HASH: &str = "$argon2id$v=19$m=15000,t=2,p=1$ZmFybXMtMC41LWZpeHR1cg$yI1j7Katv4qaHWaFy1E/ag6GZ/x5jS9X47VS2MObjcA";
+    const ARGON2_0_5_FIXTURE_PASSWORD: &str = "argon2-0.5-compat-pw";
+
+    #[test]
+    fn verify_password_hash_accepts_hash_from_previous_argon2_release() {
+        let result = verify_password_hash(
+            SecretString::from(ARGON2_0_5_FIXTURE_HASH),
+            SecretString::from(ARGON2_0_5_FIXTURE_PASSWORD),
+        );
+
+        assert!(
+            result.is_ok(),
+            "Hash stored by argon2 0.5 should still verify, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn verify_password_hash_rejects_wrong_password_for_previous_argon2_release_hash() {
+        let result = verify_password_hash(
+            SecretString::from(ARGON2_0_5_FIXTURE_HASH),
+            SecretString::from(format!("{ARGON2_0_5_FIXTURE_PASSWORD}-wrong")),
+        );
+
+        assert!(result.is_err(), "Wrong password must not verify");
+    }
+
+    #[test]
+    fn compute_password_hash_keeps_algorithm_params_and_salt_length() {
+        let hash = compute_password_hash(make_test_password(PasswordKind::Standard)).unwrap();
+        let parsed = PasswordHash::new(hash.expose_secret()).unwrap();
+
+        assert_eq!(parsed.algorithm.as_str(), "argon2id");
+        assert_eq!(parsed.version, Some(0x13));
+        assert_eq!(parsed.params.to_string(), "m=15000,t=2,p=1");
+        // 16 random bytes, the same salt length argon2 0.5's SaltString::generate used.
+        assert_eq!(parsed.salt.expect("salt").as_ref().len(), 16);
     }
 }
