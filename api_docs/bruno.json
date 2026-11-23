@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "api_docs",
+  "name": "FARMS API",
   "type": "collection",
   "ignore": [
     "node_modules",

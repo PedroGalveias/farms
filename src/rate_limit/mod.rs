@@ -1,4 +1,24 @@
-use deadpool_redis::{Pool, redis::AsyncTypedCommands};
+use deadpool_redis::{Pool, redis::Script};
+use std::sync::LazyLock;
+
+/// Increment the fixed-window counter and make sure it expires, atomically.
+///
+/// Running INCR and EXPIRE as two separate commands could leave a counter with
+/// no expiry if the second one never ran (connection dropped, command timed
+/// out, process died), and that client would stay rate-limited forever.
+/// Valkey runs a script as a single step. Checking `TTL == -1` rather than
+/// `count == 1` also gives an expiry to counters already left without one.
+static RATE_LIMIT_SCRIPT: LazyLock<Script> = LazyLock::new(|| {
+    Script::new(
+        r"
+        local count = redis.call('INCR', KEYS[1])
+        if redis.call('TTL', KEYS[1]) == -1 then
+            redis.call('EXPIRE', KEYS[1], ARGV[1])
+        end
+        return count
+        ",
+    )
+});
 
 pub enum RateLimitDecision {
     Allowed,
@@ -22,12 +42,13 @@ pub async fn check_rate_limit(
 ) -> Result<RateLimitDecision, RateLimitError> {
     let mut connection = pool.get().await?;
 
-    let count = connection.incr(key, 1).await?;
-    if count == 1 {
-        connection.expire(key, window_seconds as i64).await?;
-    }
+    let count: u64 = RATE_LIMIT_SCRIPT
+        .key(key)
+        .arg(window_seconds)
+        .invoke_async(&mut connection)
+        .await?;
 
-    Ok(if count as u64 > max_requests {
+    Ok(if count > max_requests {
         RateLimitDecision::Limited
     } else {
         RateLimitDecision::Allowed

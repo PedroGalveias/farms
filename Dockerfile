@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.97-alpine3.24 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.100-alpine3.24 AS chef
 WORKDIR /app
 RUN apk add --no-cache lld clang openssl-dev
 ENV CARGO_TERM_PROGRESS_WHEN=never

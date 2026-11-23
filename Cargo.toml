@@ -17,11 +17,15 @@ actix-web = "4.20"
 tokio = { version = "1.54", features = ["macros", "rt-multi-thread"] }
 
 # Databases
-redis = { version = "1.8", features = [
-    "tokio-rustls-comp",
-    "connection-manager"
-] }
-deadpool-redis = { version = "0.22", features = ["serde", "rt_tokio_1"] }
+# Redis is used through `deadpool_redis::redis` (the redis version deadpool-redis
+# is built against), never as a direct dependency: pooled connections only
+# implement that version's traits. TLS (`rediss://`) for it is enabled by
+# actix-session's `redis-session-rustls` feature below.
+# deadpool-redis must stay on the version actix-session's `redis-pool` uses
+# (0.22 for actix-session 0.11), since the same pool is handed to it in
+# `startup::build_session_store`. Bump both together.
+# `script`: Lua scripts (EVALSHA with EVAL fallback) for the atomic rate limiter.
+deadpool-redis = { version = "0.22", features = ["serde", "rt_tokio_1", "script"] }
 actix-session = { version = "0.11", features = [
     "redis-session",
     "redis-session-rustls",

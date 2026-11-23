@@ -20,6 +20,8 @@ cleanup_worker:
 redis:
   uri: "redis://127.0.0.1:6379"
   pool_max_size: 20
+  # Bounds every Valkey wait: getting a pooled connection, connecting, the
+  # idle-connection health check, and each command's response.
   timeout_seconds: 5
   session_key_prefix: "sess"
 session:

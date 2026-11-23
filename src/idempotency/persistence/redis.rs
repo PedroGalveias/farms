@@ -36,6 +36,10 @@ pub async fn try_processing(
             .with_expiration(SetExpiry::EX(idempotency_settings.ttl_seconds)),
     )
     .await?;
+    // Return the connection before `get_saved_response` checks out another.
+    // Holding both means every concurrent request can end up owning one
+    // connection while waiting for a second, exhausting the pool.
+    drop(connection);
 
     if result.is_some() {
         Ok(RedisPersistenceNextAction::StartProcessing)

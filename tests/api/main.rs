@@ -13,3 +13,4 @@ mod products;
 mod registration;
 mod suggestions;
 mod taxonomy;
+mod valkey;
