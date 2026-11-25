@@ -68,7 +68,7 @@ impl Categories {
                 return Err(CategoriesError::EmptyCategoryValue(category));
             }
 
-            if trimmed.len() > Self::MAX_CATEGORIES {
+            if trimmed.len() > Self::MAX_CATEGORY_NAME_LENGTH {
                 return Err(CategoriesError::CategoryLengthTooLong {
                     category: trimmed.clone(),
                     max: Self::MAX_CATEGORY_NAME_LENGTH,

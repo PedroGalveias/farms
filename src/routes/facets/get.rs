@@ -52,6 +52,13 @@ pub struct FacetsResponse {
     pub categories: Vec<CategoryFacet>,
 }
 
+/// Farm counts read from a single snapshot of the directory.
+struct FacetCounts {
+    total: i64,
+    cantons: Vec<CantonFacet>,
+    by_category: std::collections::HashMap<String, i64>,
+}
+
 /// How long a client may reuse this response.
 ///
 /// Matched to the 5 minutes the frontend already caches `GET /farms` for: these
@@ -88,9 +95,42 @@ pub async fn get_facets(
     pool: web::Data<PgPool>,
     taxonomy: web::Data<TaxonomySnapshot>,
 ) -> Result<HttpResponse, FarmError> {
-    let language = Language::from_query(query.lang.as_deref())
-        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    let language = Language::from_query(query.lang.as_deref())?;
 
+    let FacetCounts {
+        total,
+        cantons,
+        by_category,
+    } = load_facet_counts(pool.get_ref()).await?;
+
+    // Driven by the taxonomy snapshot, not by the query, so the list and its
+    // order match `GET /taxonomy` exactly and a category with no farms yet
+    // still appears.
+    let categories = taxonomy
+        .categories()
+        .iter()
+        .map(|category| CategoryFacet {
+            slug: category.slug.clone(),
+            name: category.labels.resolve(language).to_string(),
+            translated: category.labels.has(language),
+            count: by_category
+                .get(category.slug.as_str())
+                .copied()
+                .unwrap_or(0),
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CACHE_CONTROL, CACHE_CONTROL))
+        .json(FacetsResponse {
+            lang: language,
+            total,
+            cantons,
+            categories,
+        }))
+}
+
+async fn load_facet_counts(pool: &PgPool) -> Result<FacetCounts, FarmError> {
     // All three aggregates read ONE snapshot of the directory.
     //
     // Separate statements on the pool each see their own committed state, so a
@@ -155,23 +195,9 @@ pub async fn get_facets(
         .await
         .context("Failed to close the facets transaction.")?;
 
-    let counts: std::collections::HashMap<&str, i64> = category_rows
-        .iter()
-        .map(|row| (row.slug.as_str(), row.count))
-        .collect();
-
-    // Driven by the taxonomy snapshot, not by the query, so the list and its
-    // order match `GET /taxonomy` exactly and a category with no farms yet
-    // still appears.
-    let categories = taxonomy
-        .categories()
-        .iter()
-        .map(|category| CategoryFacet {
-            slug: category.slug.clone(),
-            name: category.labels.resolve(language).to_string(),
-            translated: category.labels.has(language),
-            count: counts.get(category.slug.as_str()).copied().unwrap_or(0),
-        })
+    let by_category = category_rows
+        .into_iter()
+        .map(|row| (row.slug, row.count))
         .collect();
 
     let cantons = canton_rows
@@ -182,12 +208,9 @@ pub async fn get_facets(
         })
         .collect();
 
-    Ok(HttpResponse::Ok()
-        .insert_header((header::CACHE_CONTROL, CACHE_CONTROL))
-        .json(FacetsResponse {
-            lang: language,
-            total,
-            cantons,
-            categories,
-        }))
+    Ok(FacetCounts {
+        total,
+        cantons,
+        by_category,
+    })
 }

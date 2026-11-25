@@ -91,7 +91,7 @@ impl Point {
 
     /// Convert to "latitude,longitude" string format (for API responses).
     pub fn to_string_format(&self) -> String {
-        format!("{},{}", self.latitude, self.longitude)
+        self.to_string()
     }
 
     /// Returns the latitude coordinate.
@@ -109,18 +109,18 @@ impl Point {
         (self.latitude, self.longitude)
     }
 
-    /// Returns the coordinates as a formatted string.
+    /// Returns the coordinates as an owned `latitude,longitude` string.
     ///
-    /// Equivalent to `to_string_format()`. Useful for logging and display.
+    /// Use `to_string()` when formatting coordinates in new code.
     pub fn as_str(&self) -> String {
-        self.to_string_format()
+        self.to_string()
     }
 }
 
 // Display trait for easy printing
 impl std::fmt::Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string_format())
+        write!(f, "{},{}", self.latitude, self.longitude)
     }
 }
 
@@ -222,7 +222,7 @@ impl serde::Serialize for Point {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string_format())
+        serializer.serialize_str(&self.to_string())
     }
 }
 

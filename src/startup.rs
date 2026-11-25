@@ -1,6 +1,4 @@
-use crate::configuration::{
-    DatabaseSettings, RedisSettings, SessionSameSite, SessionSettings, Settings,
-};
+use crate::configuration::{RedisSettings, SessionSameSite, SessionSettings, Settings};
 use crate::email_client::EmailClient;
 use crate::routes::{admin, authentication, facets, farms, health_check, suggestions, taxonomy};
 use actix_session::{
@@ -18,9 +16,11 @@ use actix_web::{
 use anyhow::Context;
 use deadpool_redis::{Manager, Pool, Runtime, redis::AsyncConnectionConfig};
 use secrecy::ExposeSecret;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::PgPool;
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
+
+pub use crate::database::get_connection_pool;
 
 pub struct Application {
     port: u16,
@@ -53,16 +53,6 @@ impl Application {
     pub async fn run_until_stopped(self) -> Result<(), std::io::Error> {
         self.server.await
     }
-}
-
-pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
-    let max_connections = configuration.max_connections.unwrap_or(10);
-    let timeout = configuration.timeout_seconds.unwrap_or(2);
-
-    PgPoolOptions::new()
-        .max_connections(max_connections)
-        .acquire_timeout(std::time::Duration::from_secs(timeout))
-        .connect_lazy_with(configuration.with_db())
 }
 
 pub fn get_redis_connection_pool(configuration: &RedisSettings) -> Result<Pool, anyhow::Error> {

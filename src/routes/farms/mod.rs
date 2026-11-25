@@ -6,10 +6,20 @@ use uuid::Uuid;
 mod error;
 mod get;
 mod post;
+mod read;
 
 pub use error::FarmError;
 pub use get::{get_all, get_by_id};
 pub use post::create;
+
+/// Looks up a product or category ID by slug and returns a validation error if it is unknown.
+fn lookup_classification_id<T>(
+    slug: &str,
+    resolver: impl FnOnce(&str) -> Option<T>,
+    kind: &str,
+) -> Result<T, FarmError> {
+    resolver(slug).ok_or_else(|| FarmError::ValidationError(format!("Unknown {kind} '{slug}'.")))
+}
 
 /// A product as returned to API clients.
 ///
@@ -82,15 +92,4 @@ pub struct FarmListResponse {
     /// infer it from the payload. It is also what makes an omitted `lang`
     /// self-documenting.
     pub lang: Language,
-}
-
-/// The raw farm row loaded from the database, before products are attached.
-pub(crate) struct FarmRow {
-    pub id: Uuid,
-    pub name: Name,
-    pub address: Address,
-    pub canton: Canton,
-    pub coordinates: Point,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
 }
