@@ -1,4 +1,4 @@
-use crate::{configuration::Settings, startup::get_connection_pool};
+use crate::{configuration::Settings, database::get_connection_pool};
 use sqlx::PgPool;
 use std::time::Duration;
 use tracing::Span;
@@ -30,12 +30,7 @@ async fn worker_loop(pool: PgPool, run_interval: u64) -> Result<(), anyhow::Erro
 
     loop {
         match try_to_execute_task(&pool).await {
-            Ok(ExpiryOutcome::NothingToDelete) => {
-                tracing::debug!("Expiry worker found no expired rows this run.");
-            }
-            Ok(ExpiryOutcome::RowsDeleted(n)) => {
-                tracing::info!(deleted_rows = n, "Expiry worker deleted expired rows.");
-            }
+            Ok(outcome) => log_expiry_outcome(outcome),
             Err(e) => {
                 tracing::error!(
                     error.cause_chain = ?e,
@@ -53,6 +48,17 @@ async fn worker_loop(pool: PgPool, run_interval: u64) -> Result<(), anyhow::Erro
             "Expiry worker sleeping until next scheduled run."
         );
         tokio::time::sleep(sleep_duration).await;
+    }
+}
+
+fn log_expiry_outcome(outcome: ExpiryOutcome) {
+    match outcome {
+        ExpiryOutcome::NothingToDelete => {
+            tracing::debug!("Expiry worker found no expired rows this run.");
+        }
+        ExpiryOutcome::RowsDeleted(n) => {
+            tracing::info!(deleted_rows = n, "Expiry worker deleted expired rows.");
+        }
     }
 }
 

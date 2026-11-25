@@ -39,46 +39,28 @@ where
         .unwrap_or_else(|_| EnvFilter::new(logging_settings.level.as_str()));
 
     // Add OpenTelemetry layer if enabled
-    if telemetry_settings.enabled {
+    let tracer = if telemetry_settings.enabled {
         tracing::info!(
             "Initializing OpenTelemetry subscriber with endpoint: {}",
             telemetry_settings.endpoint
         );
-        let tracer = init_opentelemetry(&telemetry_settings)?;
-
-        match logging_settings.format {
-            LogFormat::Pretty => {
-                tracing::info!("Initializing pretty logging subscriber");
-                let subscriber =
-                    get_pretty_subscriber(env_filter, sink).with(OpenTelemetryLayer::new(tracer));
-
-                set_global_default(subscriber).expect("Failed to set subscriber");
-            }
-            LogFormat::Bunyan => {
-                tracing::info!("Initializing Bunyan logging subscriber");
-                let subscriber =
-                    get_bunyan_subscriber(env_filter, &telemetry_settings.service_name, sink)
-                        .with(OpenTelemetryLayer::new(tracer));
-
-                set_global_default(subscriber).expect("Failed to set subscriber");
-            }
-        }
-
-        return Ok(());
-    }
+        Some(init_opentelemetry(&telemetry_settings)?)
+    } else {
+        None
+    };
 
     match logging_settings.format {
         LogFormat::Pretty => {
             tracing::info!("Initializing pretty logging subscriber");
-            let subscriber = get_pretty_subscriber(env_filter, sink);
-
+            let subscriber =
+                get_pretty_subscriber(env_filter, sink).with(tracer.map(OpenTelemetryLayer::new));
             set_global_default(subscriber).expect("Failed to set subscriber");
         }
         LogFormat::Bunyan => {
             tracing::info!("Initializing Bunyan logging subscriber");
             let subscriber =
-                get_bunyan_subscriber(env_filter, &telemetry_settings.service_name, sink);
-
+                get_bunyan_subscriber(env_filter, &telemetry_settings.service_name, sink)
+                    .with(tracer.map(OpenTelemetryLayer::new));
             set_global_default(subscriber).expect("Failed to set subscriber");
         }
     }

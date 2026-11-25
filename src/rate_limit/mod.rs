@@ -1,3 +1,5 @@
+use crate::configuration::RateLimitSettings;
+use actix_web::HttpRequest;
 use deadpool_redis::{Pool, redis::Script};
 use std::sync::LazyLock;
 
@@ -33,6 +35,15 @@ pub enum RateLimitError {
     Redis(#[from] deadpool_redis::redis::RedisError),
 }
 
+/// Returns the client address used in rate-limit keys, or `"unknown"`.
+pub(crate) fn resolve_client_ip(request: &HttpRequest) -> String {
+    request
+        .connection_info()
+        .realip_remote_addr()
+        .unwrap_or("unknown")
+        .to_string()
+}
+
 #[tracing::instrument(name = "Check rate limit", skip(pool))]
 pub async fn check_rate_limit(
     pool: &Pool,
@@ -53,4 +64,22 @@ pub async fn check_rate_limit(
     } else {
         RateLimitDecision::Allowed
     })
+}
+
+/// Check the keys in order, reporting storage errors and continuing.
+pub(crate) async fn check_keys_fail_open(
+    pool: &Pool,
+    keys: &[String],
+    limits: &RateLimitSettings,
+    on_error: impl Fn(&RateLimitError),
+) -> RateLimitDecision {
+    for key in keys {
+        match check_rate_limit(pool, key, limits.max_requests, limits.window_seconds).await {
+            Ok(RateLimitDecision::Allowed) => {}
+            Ok(RateLimitDecision::Limited) => return RateLimitDecision::Limited,
+            Err(error) => on_error(&error),
+        }
+    }
+
+    RateLimitDecision::Allowed
 }

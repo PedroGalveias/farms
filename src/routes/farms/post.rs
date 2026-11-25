@@ -1,9 +1,9 @@
+use super::{FarmError, lookup_classification_id};
 use crate::{
     authentication::CurrentUser,
     configuration::Settings,
     domain::farm::{Address, Canton, Name, Point, ProductSlug},
     idempotency::{IdempotencyError, IdempotencyNextAction, save_response, try_processing},
-    routes::farms::FarmError,
     taxonomy::TaxonomySnapshot,
 };
 use actix_web::{HttpResponse, web};
@@ -45,56 +45,21 @@ pub async fn create(
     let body = body.into_inner();
 
     // Validate the farm's own fields.
-    let name = Name::parse(body.name).map_err(|e| FarmError::ValidationError(e.to_string()))?;
-    let address =
-        Address::parse(body.address).map_err(|e| FarmError::ValidationError(e.to_string()))?;
-    let canton =
-        Canton::parse(body.canton).map_err(|e| FarmError::ValidationError(e.to_string()))?;
-    let coordinates =
-        Point::parse(&body.coordinates).map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    // Validate the farm's own fields.
+    let name = Name::parse(body.name).map_err(validation_error)?;
+    let address = Address::parse(body.address).map_err(validation_error)?;
+    let canton = Canton::parse(body.canton).map_err(validation_error)?;
+    let coordinates = Point::parse(&body.coordinates).map_err(validation_error)?;
 
-    // Resolve product slugs (shape via ProductSlug, existence via the snapshot).
-    let mut product_ids = Vec::with_capacity(body.products.len());
-    for raw in body.products {
-        let slug =
-            ProductSlug::parse(raw).map_err(|e| FarmError::ValidationError(e.to_string()))?;
-        let id = taxonomy.id_for_slug(slug.as_str()).ok_or_else(|| {
-            FarmError::ValidationError(format!("Unknown product '{}'.", slug.as_str()))
-        })?;
-        product_ids.push(id);
-    }
-    product_ids.sort_unstable();
-    product_ids.dedup();
-
-    // Resolve category slugs (ProductSlug validates slug shape for either kind).
-    let mut category_ids = Vec::with_capacity(body.categories.len());
-    for raw in body.categories {
-        let slug =
-            ProductSlug::parse(raw).map_err(|e| FarmError::ValidationError(e.to_string()))?;
-        let id = taxonomy
-            .category_id_for_slug(slug.as_str())
-            .ok_or_else(|| {
-                FarmError::ValidationError(format!("Unknown category '{}'.", slug.as_str()))
-            })?;
-        category_ids.push(id);
-    }
-    category_ids.sort_unstable();
-    category_ids.dedup();
-
-    // A farm needs at least one classification — coarse (group) or granular
-    // (product). The source data has both kinds, so accept either.
-    if category_ids.is_empty() && product_ids.is_empty() {
-        return Err(FarmError::ValidationError(
-            "At least one category or product is required.".to_string(),
-        ));
-    }
+    let (product_ids, category_ids) =
+        resolve_farm_classifications(body.products, body.categories, taxonomy.get_ref())?;
 
     // Record form fields in the tracing span.
     let span = tracing::Span::current();
     span.record("create_name", name.as_str());
     span.record("create_address", address.as_str());
     span.record("create_canton", canton.as_str());
-    span.record("create_coordinates", coordinates.as_str());
+    span.record("create_coordinates", coordinates.to_string());
     span.record("idempotency_key", body.idempotency_key.as_str());
 
     let mut transaction = match try_processing(
@@ -137,6 +102,55 @@ pub async fn create(
         .map_err(|e| FarmError::UnexpectedError(e.into()))?;
 
     Ok(response)
+}
+
+fn validation_error(error: impl std::fmt::Display) -> FarmError {
+    FarmError::ValidationError(error.to_string())
+}
+
+fn resolve_farm_classifications(
+    products: Vec<String>,
+    categories: Vec<String>,
+    taxonomy: &TaxonomySnapshot,
+) -> Result<(Vec<i32>, Vec<i16>), FarmError> {
+    let product_ids =
+        resolve_classification_ids(products, |slug| taxonomy.id_for_slug(slug), "product")?;
+
+    let category_ids = resolve_classification_ids(
+        categories,
+        |slug| taxonomy.category_id_for_slug(slug),
+        "category",
+    )?;
+
+    // A farm needs at least one classification — coarse (group) or granular
+    // (product). The source data has both kinds, so accept either.
+    if category_ids.is_empty() && product_ids.is_empty() {
+        return Err(FarmError::ValidationError(
+            "At least one category or product is required.".to_string(),
+        ));
+    }
+
+    Ok((product_ids, category_ids))
+}
+
+fn resolve_classification_ids<T: Ord>(
+    raw_slugs: Vec<String>,
+    resolve: impl Fn(&str) -> Option<T>,
+    kind: &str,
+) -> Result<Vec<T>, FarmError> {
+    let mut ids = Vec::with_capacity(raw_slugs.len());
+
+    for raw in raw_slugs {
+        let slug = ProductSlug::parse(raw).map_err(validation_error)?;
+
+        let id = lookup_classification_id(slug.as_str(), &resolve, kind)?;
+
+        ids.push(id);
+    }
+
+    ids.sort_unstable();
+    ids.dedup();
+    Ok(ids)
 }
 
 #[tracing::instrument(name = "Saving new farm details in the database", skip(transaction))]

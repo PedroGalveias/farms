@@ -8,5 +8,6 @@ pub mod taxonomy;
 pub mod telemetry;
 
 pub mod authentication;
+mod database;
 mod email_client;
 mod rate_limit;

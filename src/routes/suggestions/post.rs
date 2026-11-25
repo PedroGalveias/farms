@@ -2,7 +2,7 @@ use crate::{
     authentication::CurrentUser,
     configuration::Settings,
     domain::suggestion::SuggestionAction,
-    rate_limit::{RateLimitDecision, check_rate_limit},
+    rate_limit::{RateLimitDecision, check_keys_fail_open, resolve_client_ip},
     routes::suggestions::error::SuggestionError,
     taxonomy::TaxonomySnapshot,
 };
@@ -115,11 +115,8 @@ async fn enforce_rate_limit(
 ) -> Result<(), SuggestionError> {
     // Reuse the registration rate-limit tunables.
     let limits = &configuration.registration.rate_limit;
-    let client_ip = request
-        .connection_info()
-        .realip_remote_addr()
-        .unwrap_or("unknown")
-        .to_string();
+
+    let client_ip = resolve_client_ip(request);
 
     let prefix = &limits.key_prefix;
     let keys = [
@@ -127,18 +124,16 @@ async fn enforce_rate_limit(
         format!("{prefix}:suggestion:ip:{client_ip}"),
     ];
 
-    for key in keys {
-        match check_rate_limit(redis_pool, &key, limits.max_requests, limits.window_seconds).await {
-            Ok(RateLimitDecision::Allowed) => {}
-            Ok(RateLimitDecision::Limited) => return Err(SuggestionError::RateLimited),
-            Err(e) => {
-                tracing::warn!(
-                    error = ?e,
-                    "Suggestion rate limit check failed; allowing (fail-open)."
-                );
-            }
-        }
-    }
+    let decision = check_keys_fail_open(redis_pool, &keys, limits, |error| {
+        tracing::warn!(
+            error = ?error,
+            "Suggestion rate limit check failed; allowing (fail-open)."
+        );
+    })
+    .await;
 
-    Ok(())
+    match decision {
+        RateLimitDecision::Allowed => Ok(()),
+        RateLimitDecision::Limited => Err(SuggestionError::RateLimited),
+    }
 }

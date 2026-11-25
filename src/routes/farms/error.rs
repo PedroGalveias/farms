@@ -1,4 +1,7 @@
-use crate::{errors::error_chain_fmt, idempotency::IdempotencyError};
+use crate::{
+    domain::language::LanguageError, errors::error_chain_fmt, idempotency::IdempotencyError,
+};
+
 use actix_web::{ResponseError, http::StatusCode};
 use std::fmt::Formatter;
 
@@ -16,6 +19,13 @@ pub enum FarmError {
     #[error("Farm not found.")]
     NotFound,
 }
+
+impl From<LanguageError> for FarmError {
+    fn from(error: LanguageError) -> Self {
+        Self::ValidationError(error.to_string())
+    }
+}
+
 impl ResponseError for FarmError {
     fn status_code(&self) -> StatusCode {
         match self {

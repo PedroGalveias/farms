@@ -37,9 +37,11 @@ pub async fn save_response(
     http_response: HttpResponse,
 ) -> Result<(HttpResponse, Transaction<'static, Postgres>), IdempotencyError> {
     let idempotency_data = IdempotencyData::try_from_response(http_response).await?;
-    match idempotency_settings.engine {
+
+    let transaction = match idempotency_settings.engine {
         // No idempotency just return the provided response
-        IdempotencyEngine::None => Ok((idempotency_data.into_response()?, transaction)),
+        IdempotencyEngine::None => transaction,
+
         IdempotencyEngine::Redis => {
             let idempotency_key = build_user_scoped_idempotency_key(
                 &idempotency_settings.redis_key_prefix,
@@ -55,12 +57,13 @@ pub async fn save_response(
             .await
             .map_err(IdempotencyError::from)?;
 
-            Ok((idempotency_data.into_response()?, transaction))
+            transaction
         }
+
         IdempotencyEngine::Postgres => {
             let idempotency_key = IdempotencyKey::try_from(idempotency_key.to_string())
                 .map_err(|e| IdempotencyError::UnexpectedError(e.into()))?;
-            let transaction = postgres::save_response(
+            postgres::save_response(
                 transaction,
                 &idempotency_key,
                 user_id,
@@ -68,11 +71,11 @@ pub async fn save_response(
                 &idempotency_data,
             )
             .await
-            .map_err(IdempotencyError::from)?;
-
-            Ok((idempotency_data.into_response()?, transaction))
+            .map_err(IdempotencyError::from)?
         }
-    }
+    };
+
+    Ok((idempotency_data.into_response()?, transaction))
 }
 
 pub enum IdempotencyNextAction {
@@ -103,12 +106,8 @@ pub async fn try_processing(
 
             match redis::try_processing(redis_pool, &idempotency_key, idempotency_settings)
                 .await
-                .map_err(|e| match e {
-                    IdempotencyPersistenceError::ExpectedResponseNotFoundError => {
-                        IdempotencyError::ExpectedResponseNotFoundError
-                    }
-                    _ => IdempotencyError::from(e),
-                })? {
+                .map_err(map_processing_error)?
+            {
                 RedisPersistenceNextAction::ReturnSavedData(response_data) => Ok(
                     IdempotencyNextAction::ReturnSavedResponse(response_data.into_response()?),
                 ),
@@ -129,12 +128,8 @@ pub async fn try_processing(
                 idempotency_settings.ttl_seconds,
             )
             .await
-            .map_err(|e| match e {
-                IdempotencyPersistenceError::ExpectedResponseNotFoundError => {
-                    IdempotencyError::ExpectedResponseNotFoundError
-                }
-                _ => IdempotencyError::from(e),
-            })? {
+            .map_err(map_processing_error)?
+            {
                 PostgresPersistenceNextAction::ReturnSavedData(response_data) => Ok(
                     IdempotencyNextAction::ReturnSavedResponse(response_data.into_response()?),
                 ),
@@ -143,5 +138,14 @@ pub async fn try_processing(
                 }
             }
         }
+    }
+}
+
+fn map_processing_error(error: IdempotencyPersistenceError) -> IdempotencyError {
+    match error {
+        IdempotencyPersistenceError::ExpectedResponseNotFoundError => {
+            IdempotencyError::ExpectedResponseNotFoundError
+        }
+        other => IdempotencyError::from(other),
     }
 }

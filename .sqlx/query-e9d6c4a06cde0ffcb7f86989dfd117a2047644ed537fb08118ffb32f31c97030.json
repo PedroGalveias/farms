@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            f.id,\n            f.name        AS \"name: Name\",\n            f.address     AS \"address: Address\",\n            f.canton      AS \"canton: Canton\",\n            f.coordinates AS \"coordinates: Point\",\n            f.created_at,\n            f.updated_at\n        FROM farms f\n        WHERE f.id = $1\n        ",
+  "query": "\n        SELECT\n            f.id,\n            f.name        AS \"name: Name\",\n            f.address     AS \"address: Address\",\n            f.canton      AS \"canton: Canton\",\n            f.coordinates AS \"coordinates: Point\",\n            f.created_at,\n            f.updated_at,\n            NULL::float8 AS \"distance?\"\n        FROM farms f\n        WHERE f.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -79,6 +79,12 @@
             "name": "updated_at"
           }
         }
+      },
+      {
+        "ordinal": 7,
+        "name": "distance?",
+        "type_info": "Float8",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -93,8 +99,9 @@
       false,
       false,
       false,
-      true
+      true,
+      null
     ]
   },
-  "hash": "9cd6734927cf8e6c24667f3f439a18dcbdcd57bb56186936cae0fdc9edc75a6f"
+  "hash": "e9d6c4a06cde0ffcb7f86989dfd117a2047644ed537fb08118ffb32f31c97030"
 }

@@ -80,8 +80,7 @@ pub async fn get_taxonomy(
     query: web::Query<TaxonomyQuery>,
     taxonomy: web::Data<TaxonomySnapshot>,
 ) -> Result<HttpResponse, FarmError> {
-    let language = Language::from_query(query.lang.as_deref())
-        .map_err(|e| FarmError::ValidationError(e.to_string()))?;
+    let language = Language::from_query(query.lang.as_deref())?;
 
     let categories = taxonomy
         .categories()
